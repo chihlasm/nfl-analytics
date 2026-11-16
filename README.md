@@ -1,1 +1,138 @@
-# nfl-analytics
+# NFL Analytics
+
+*Working name. A real name comes before launch.*
+
+A self-hosted NFL analytics platform for the homelab. It downloads every free
+nflverse dataset (play-by-play back to 1999, FTN charting, Next Gen Stats,
+rosters, snaps, injuries, schedules) into one DuckDB database, refreshes it
+automatically, and will serve it to a dashboard and to Claude through an MCP
+server.
+
+| Phase | What | Status |
+| --- | --- | --- |
+| 1 | Data foundation: ingest job, database, views, saved metrics | **This release** |
+| 2 | MCP server so Claude can answer questions from the data | Next |
+| 3 | Dashboard (league-wide home with news, player/team pages, explorer) | Planned |
+| 4 | Compare, saved views, fantasy and betting views | Planned |
+
+## How it works
+
+```
+nflverse GitHub releases ──► ingest (daily 6:00 ET, full Wed 6:30 ET)
+                                │  downloads only changed files (ETag cache)
+                                ▼
+                        nfl.duckdb.building ──validate──► nfl.duckdb (atomic swap)
+                                                            │ read-only
+                                          ┌─────────────────┼─────────────────┐
+                                          ▼                 ▼                 ▼
+                                     API (Phase 3)    MCP (Phase 2)    dashboard (Phase 3)
+```
+
+- **Daily refresh:** re-checks current-season files and the all-seasons files,
+  plus anything never downloaded. Unchanged files cost one tiny request.
+- **Weekly full refresh (Wednesday):** re-checks every season to pick up nflverse
+  corrections to old data.
+- **Every run rebuilds the database from scratch** into a new file, validates it,
+  then swaps it in atomically. A failed run never touches the live database. The
+  previous database is kept as `nfl.duckdb.prev`.
+- **Health:** each run writes `status.json`. The container turns unhealthy if no
+  run has succeeded in 30 hours, which Uptime Kuma or Beszel can alert on.
+
+Full build on real data: ~1.3 million plays, about 35 seconds and 3.6 GB peak
+memory. Disk: about 520 MB of cached Parquet plus about 760 MB for the database.
+
+## Deploy on docker-01
+
+1. **Clone** onto docker-01 (or point Dockge at the repo):
+   ```bash
+   cd /opt/docker
+   git clone https://github.com/chihlasm/nfl-analytics.git
+   cd nfl-analytics
+   ```
+2. **Configure** (optional, every value has a default):
+   ```bash
+   cp .env.example .env
+   # Set NFL_DATA_HOST_DIR to a tank dataset if you want the data off the VM disk,
+   # e.g. NFL_DATA_HOST_DIR=/mnt/tank/nfl-analytics
+   ```
+   The data folder must be writable by the container user (`PUID`/`PGID`, default 1000).
+3. **Start:**
+   ```bash
+   docker compose up -d --build
+   docker compose logs -f ingest
+   ```
+   The first start downloads every season (about 520 MB) and builds the database,
+   which takes a few minutes. After that it waits for the next scheduled run.
+4. **Check it:**
+   ```bash
+   docker compose exec ingest nfl status
+   docker compose exec ingest nfl metric short_throw_misses \
+       --player "Michael Penix Jr." --season 2026 --week-to 9
+   ```
+
+## Command reference
+
+Run inside the container (`docker compose exec ingest nfl ...`) or locally after
+`pip install -e ".[dev]"` with `NFL_DATA_DIR` set.
+
+| Command | What it does |
+| --- | --- |
+| `nfl refresh` | Download what changed (daily mode) and rebuild once |
+| `nfl refresh --full` | Re-check every season, then rebuild |
+| `nfl build` | Rebuild from the local cache only, no downloads |
+| `nfl schedule` | Run forever on the daily and weekly schedules (container default) |
+| `nfl status` | Show the last run: files, rows, latest week, errors |
+| `nfl health` | Exit 0 if the last success is under 30 hours old |
+| `nfl metric NAME --player P --season S` | Compute a saved metric (`--week-from`, `--week-to`, `--season-type REG\|POST\|ALL`) |
+| `nfl query "SQL"` | Run a read-only query and print the result |
+
+## The data
+
+**Raw tables** mirror the nflverse files: `raw_pbp`, `raw_ftn`, `raw_player_week`,
+`raw_rosters`, `raw_snap_counts`, `raw_injuries`, `raw_players`, `raw_schedules`,
+`raw_ngs_passing`, `raw_ngs_receiving`, `raw_ngs_rushing`.
+
+**Views** are what everything else queries (defined in
+[`src/nfl_analytics/sql/views.sql`](src/nfl_analytics/sql/views.sql)):
+
+| View | One row per | Notes |
+| --- | --- | --- |
+| `plays` | Play | Play-by-play + FTN charting (2022 on); adds `is_charted`, `is_short_pass`, `depth_bucket`, `is_blitz` |
+| `dropbacks` | QB dropback | Adds `is_pass_attempt`, `is_inaccurate_incompletion`, `is_short_throw_miss` |
+| `targets` | Targeted pass | Passes thrown to a receiver |
+| `games` | Game | Scores, lines, weather, starting QBs |
+| `players` | Player | Keyed by GSIS `player_id` |
+| `player_weeks` | Player × week | Box score + snaps + injury report + weekly Next Gen Stats |
+
+**Saved metrics** live in the `metric_definitions` table
+([`sql/metrics.sql`](src/nfl_analytics/sql/metrics.sql)) so every surface counts
+the same way: `short_throw_misses`, `short_throw_miss_rate`,
+`inaccurate_incompletions`, `catchable_ball_rate`, `receiver_drops`,
+`epa_per_dropback`.
+
+**Freshness:** nflverse play-by-play updates within about a day of each game. FTN
+charting lands within 48 hours, so accuracy metrics for the latest week fill in
+a day or two after play-by-play does.
+
+**Not in the free data:** a "pressured" flag and receiver separation per play.
+Pressure is approximated with `qb_hit` and `is_blitz`; separation is available
+only as weekly Next Gen Stats averages.
+
+## Development
+
+```bash
+pip install -e ".[dev]"
+pytest                 # unit tests on a synthetic fixture (seconds)
+pytest -m network      # Phase 1 gate on real data (downloads ~500 MB)
+ruff check src tests && ruff format --check src tests && mypy src
+```
+
+The Phase 1 gate: Michael Penix Jr. had **27** short-throw misses in 2026 Weeks
+1-9. An earlier hand count of 28 wrongly included a Week 7 spike to stop the
+clock; the pipeline correctly excludes spikes.
+
+## Credits and licensing
+
+Data from the [nflverse](https://github.com/nflverse) project. FTN charting data is
+CC-BY-SA 4.0: **"FTN Data via nflverse."** This platform is private and for
+personal analysis only.
