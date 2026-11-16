@@ -31,6 +31,7 @@ log = logging.getLogger(__name__)
 
 REFRESH_SECONDS = 15 * 60
 MAX_ITEMS = 60
+MAX_PER_SOURCE = 15  # 4 default feeds x 15 = the 60 shown
 MAX_TITLE = 300
 FEED_TIMEOUT = httpx.Timeout(10.0)
 USER_AGENT = "nfl-analytics/0.1 (personal news reader)"
@@ -46,6 +47,7 @@ DEFAULT_FEEDS = (
 )
 
 ATOM = "{http://www.w3.org/2005/Atom}"
+_EPOCH = datetime.min.replace(tzinfo=UTC)
 _TAG_RE = re.compile(r"<[^>]+>")
 _SPACE_RE = re.compile(r"\s+")
 
@@ -112,6 +114,46 @@ def parse_items(xml_bytes: bytes, source: str) -> list[m.NewsItem]:
     return items
 
 
+def _story_keys(item: m.NewsItem) -> tuple[str, str]:
+    """Two ways to recognise the same story: its link, and its headline's letters."""
+    link = item.url.split("?")[0].rstrip("/").lower()
+    title = re.sub(r"[^a-z0-9]", "", item.title.lower())[:80]
+    return link, title
+
+
+def merge_headlines(items: list[m.NewsItem]) -> list[m.NewsItem]:
+    """Combine every feed's headlines into one fair, de-duplicated list, newest first.
+
+    1. Duplicates: aggregators (Yahoo republishes Pro Football Talk, for example)
+       repost a story with the same headline and a LATER timestamp. Walking the
+       stories oldest-first and keeping the first copy keeps the original outlet.
+       Undated copies sort last, so a dated original always wins.
+    2. Fairness: each source contributes at most MAX_PER_SOURCE stories, so a feed
+       that posts 50 items an hour can't push out a slower one.
+    3. The result is newest first, capped at MAX_ITEMS.
+    """
+    oldest_first = sorted(items, key=lambda i: (i.published_at is None, i.published_at or _EPOCH))
+    seen: set[str] = set()
+    originals: list[m.NewsItem] = []
+    for item in oldest_first:
+        keys = _story_keys(item)
+        if any(k in seen for k in keys):
+            continue
+        seen.update(keys)
+        originals.append(item)
+
+    newest_first = sorted(originals, key=lambda i: i.published_at or _EPOCH, reverse=True)
+    per_source: dict[str, int] = {}
+    fair: list[m.NewsItem] = []
+    for item in newest_first:
+        count = per_source.get(item.source, 0)
+        if count >= MAX_PER_SOURCE:
+            continue
+        per_source[item.source] = count + 1
+        fair.append(item)
+    return fair[:MAX_ITEMS]
+
+
 @dataclass
 class NewsCache:
     feeds: list[Feed]
@@ -149,21 +191,8 @@ class NewsCache:
             if self.client is None:
                 client.close()
 
-        # Newest first; drop duplicate links and near-identical titles across sources.
-        epoch = datetime.min.replace(tzinfo=UTC)
-        items.sort(key=lambda i: i.published_at or epoch, reverse=True)
-        seen: set[str] = set()
-        unique: list[m.NewsItem] = []
-        for item in items:
-            key = item.url.split("?")[0].rstrip("/").lower()
-            title_key = re.sub(r"[^a-z0-9]", "", item.title.lower())[:80]
-            if key in seen or title_key in seen:
-                continue
-            seen.update({key, title_key})
-            unique.append(item)
-
         snapshot = m.News(
-            items=unique[:MAX_ITEMS],
+            items=merge_headlines(items),
             fetched_at=datetime.now(UTC),
             sources_ok=sorted(ok),
             sources_failed=sorted(failed),
