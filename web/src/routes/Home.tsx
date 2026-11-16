@@ -1,150 +1,562 @@
-import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 
 import { Notice, QueryState } from "../components/Notice";
-import { PageHeader, Section } from "../components/Page";
-import { TeamMark, TeamTag } from "../components/TeamMark";
-import type { Game, InjuryStatus, TeamScore } from "../lib/api";
+import { TeamMark } from "../components/TeamMark";
+import { ChipRow, Panel, Segmented, type Option } from "../components/ui";
+import type { Game, InjuryStatus, LeaderRow, NewsItem } from "../lib/api";
 import { ago, kickoff, num, shortDate, weekLabel } from "../lib/format";
+import { alpha, useScreenTeam } from "../lib/palette";
 import { useInjuries, useLeaders, useMeta, useNews, useWeek } from "../lib/queries";
 import { team } from "../lib/teams";
 
+const bright = (abbr: string | null | undefined, fallback = "#6b7280") => team(abbr)?.bright ?? fallback;
+
 export function Home() {
+  useScreenTeam(null);
   const meta = useMeta();
   const season = meta.data?.current_season;
   const [week, setWeek] = useState<number | undefined>(undefined);
   const games = useWeek(season, week);
   const shown = games.data;
-
-  const weeks = shown?.weeks ?? [];
-  const index = shown ? weeks.indexOf(shown.week) : -1;
-  const prev = index > 0 ? weeks[index - 1] : undefined;
-  const next = index >= 0 && index < weeks.length - 1 ? weeks[index + 1] : undefined;
+  const kind = shown?.games[0]?.game_type === "REG" || !shown?.games.length ? "REG" : "POST";
+  const title = shown ? weekLabel(shown.week, kind, shown.season) : "This week";
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title={shown ? weekLabel(shown.week, shown.games[0]?.game_type === "REG" ? "REG" : "POST", shown.season) : "This week"}
-        action={
-          shown && (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="btn btn-quiet btn-icon"
-                disabled={prev === undefined}
-                onClick={() => setWeek(prev)}
-                aria-label={prev !== undefined ? `Show week ${prev}` : "No earlier week"}
-              >
-                <ChevronLeft size={18} aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                className="btn btn-quiet btn-icon"
-                disabled={next === undefined}
-                onClick={() => setWeek(next)}
-                aria-label={next !== undefined ? `Show week ${next}` : "No later week"}
-              >
-                <ChevronRight size={18} aria-hidden="true" />
-              </button>
-            </div>
-          )
-        }
-      >
-        {season && (
-          <>
-            {season} season
-            {meta.data && <> · stats updated {ago(meta.data.built_at).toLowerCase()}</>}
-          </>
-        )}
-      </PageHeader>
+    <div className="flex flex-col gap-5">
+      {shown && shown.games.length > 0 && <Ticker games={shown.games} />}
 
-      <Section title="Scores" aside={shown && <span className="text-muted">{shown.games.length} games</span>}>
-        <QueryState
-          isPending={games.isPending || meta.isPending}
-          error={games.error ?? meta.error}
-          empty={shown?.games.length === 0}
-          emptyText="No games scheduled this week."
-          rows={4}
-        >
-          <ul className={`grid gap-3 sm:grid-cols-2 ${games.isPlaceholderData ? "opacity-60" : ""}`}>
-            {shown?.games.map((g) => (
-              <li key={g.game_id}>
-                <GameTile game={g} />
-              </li>
-            ))}
-          </ul>
-          <p className="text-sm text-muted">Scores and stats refresh once a day, early each morning.</p>
-        </QueryState>
-      </Section>
+      <section className="rise relative flex flex-wrap items-end justify-between gap-5 pt-2" aria-label={title}>
+        {shown && kind === "REG" && (
+          <div
+            aria-hidden="true"
+            className="disp pointer-events-none absolute -top-2 right-0 text-[9rem] text-transparent sm:-top-6 sm:text-[14rem]"
+            style={{ WebkitTextStroke: `2px ${alpha("#FF4D1A", 0.18)}` }}
+          >
+            {shown.week}
+          </div>
+        )}
+        <div className="relative flex flex-col gap-1">
+          <span className="text-xs font-extrabold uppercase tracking-[0.14em] text-[var(--tb)]">
+            {season ? `${season} season` : "Season"}
+            {meta.data && <> · stats updated {ago(meta.data.built_at).toLowerCase()}</>}
+          </span>
+          <h1 className="disp text-[4.5rem] leading-[0.84] text-white sm:text-[6.5rem]">
+            {kind === "REG" && shown ? (
+              <>
+                Week{" "}
+                <span
+                  className="bg-clip-text text-transparent"
+                  style={{
+                    backgroundImage: "linear-gradient(180deg, #fff 0%, var(--tb) 85%)",
+                    filter: "drop-shadow(0 0 26px color-mix(in srgb, var(--tb) 60%, transparent))",
+                  }}
+                >
+                  {shown.week}
+                </span>
+              </>
+            ) : (
+              title
+            )}
+          </h1>
+        </div>
+        {shown && shown.weeks.length > 1 && (
+          <div className="relative max-w-full">
+            <ChipRow
+              options={shown.weeks.map((w) => ({ key: String(w), label: String(w) }))}
+              value={String(shown.week)}
+              onChange={(w) => setWeek(Number(w))}
+              label="Week"
+            />
+          </div>
+        )}
+      </section>
+
+      {shown && shown.games.length > 0 && <Facts games={shown.games} />}
+
+      <Scores games={shown?.games ?? []} isPending={games.isPending || meta.isPending} error={games.error ?? meta.error} dim={games.isPlaceholderData} />
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+        <Leaders season={season} />
+        <Injuries season={season} />
+      </div>
 
       <Headlines />
+    </div>
+  );
+}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <LeadersCard season={season} />
-        <InjuryCard season={season} />
+/** Scores scrolling across the top, like a broadcast crawl. Paused for reduced motion. */
+function Ticker({ games }: { games: Game[] }) {
+  const items = games.map((g) => {
+    const aw = g.is_final && (g.away.score ?? 0) > (g.home.score ?? 0);
+    const hw = g.is_final && (g.home.score ?? 0) > (g.away.score ?? 0);
+    return (
+      <span key={g.game_id} className="inline-flex items-center gap-2 whitespace-nowrap border-r border-white/[0.07] px-5 py-2 text-[0.8125rem] font-semibold text-gray-300">
+        <TeamMark abbr={g.away.team} size={9} />
+        <span className={aw ? "font-extrabold text-white" : ""}>
+          {g.away.team} {g.away.score ?? ""}
+        </span>
+        <span className="text-gray-600">·</span>
+        <TeamMark abbr={g.home.team} size={9} />
+        <span className={hw ? "font-extrabold text-white" : ""}>
+          {g.home.team} {g.home.score ?? ""}
+        </span>
+        <span className={`text-[0.625rem] font-extrabold tracking-[0.1em] ${g.is_final ? "text-faint" : "text-[var(--tb)]"}`}>
+          {g.is_final ? (g.is_overtime ? "FINAL/OT" : "FINAL") : kickoff(g.kickoff_time_et).toUpperCase()}
+        </span>
+      </span>
+    );
+  });
+  return (
+    <div className="-mx-4 overflow-hidden border-y border-white/[0.08] bg-black/55 sm:mx-0 sm:rounded-full sm:border" aria-hidden="true">
+      <div className="ticker flex w-max">
+        {items}
+        {items.map((el) => (
+          <span key={`dup-${el.key}`} className="contents">
+            {el}
+          </span>
+        ))}
       </div>
     </div>
   );
 }
 
-function GameTile({ game }: { game: Game }) {
-  const { home, away, is_final } = game;
-  const awayWon = is_final && (away.score ?? 0) > (home.score ?? 0);
-  const homeWon = is_final && (home.score ?? 0) > (away.score ?? 0);
-  const status = is_final ? (game.is_overtime ? "Final/OT" : "Final") : kickoff(game.kickoff_time_et);
+function Facts({ games }: { games: Game[] }) {
+  const finals = games.filter((g) => g.is_final && g.home.score != null && g.away.score != null);
+  const total = (g: Game) => (g.home.score ?? 0) + (g.away.score ?? 0);
+  const margin = (g: Game) => Math.abs((g.home.score ?? 0) - (g.away.score ?? 0));
+  const winnerFirst = (g: Game) => {
+    const [w, l] = (g.home.score ?? 0) >= (g.away.score ?? 0) ? [g.home, g.away] : [g.away, g.home];
+    return `${team(w.team)?.short ?? w.team} ${w.score}, ${team(l.team)?.short ?? l.team} ${l.score}`;
+  };
+  const pick = (score: (g: Game) => number, best: "max" | "min") =>
+    finals.reduce<Game | undefined>((a, g) => (!a || (best === "max" ? score(g) > score(a) : score(g) < score(a)) ? g : a), undefined);
+  const next = games.find((g) => !g.is_final);
+  const high = pick(total, "max");
+  const close = pick(margin, "min");
+  const blowout = pick(margin, "max");
+
+  const facts = [
+    {
+      label: "Games played",
+      value: String(finals.length),
+      unit: `/ ${games.length}`,
+      note: next ? `Next: ${next.away.team} at ${next.home.team}, ${kickoff(next.kickoff_time_et)}` : "Week complete",
+      teams: next ? [next.away.team, next.home.team] : [],
+      glow: "#FF4D1A",
+    },
+    high && { label: "Highest scoring", value: String(total(high)), unit: "pts", note: winnerFirst(high), teams: [high.away.team, high.home.team], glow: bright(high.home.team) },
+    close && { label: "Closest finish", value: String(margin(close)), unit: "pts", note: winnerFirst(close), teams: [close.away.team, close.home.team], glow: bright(close.home.team) },
+    blowout && { label: "Biggest win", value: String(margin(blowout)), unit: "pts", note: winnerFirst(blowout), teams: [blowout.away.team, blowout.home.team], glow: bright(blowout.home.team) },
+  ].filter(Boolean) as Array<{ label: string; value: string; unit: string; note: string; teams: string[]; glow: string }>;
+
   return (
-    <article className="tile flex flex-col gap-3 p-4" aria-label={`${team(away.team)?.name ?? away.team} at ${team(home.team)?.name ?? home.team}`}>
-      <div className="flex items-center justify-between text-xs font-medium text-muted">
-        <span>{shortDate(game.game_date)}</span>
-        <span className={is_final ? "text-ink" : ""}>{status}</span>
+    <ul className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="This week at a glance">
+      {facts.map((f, i) => (
+        <li
+          key={f.label}
+          className="panel rise flex flex-col gap-1.5 overflow-hidden p-4"
+          style={{
+            animationDelay: `${0.04 * i}s`,
+            background: `radial-gradient(220px 140px at 100% 0%, ${alpha(f.glow, 0.32)}, transparent 70%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.015))`,
+          }}
+        >
+          <span className="text-[0.6875rem] font-extrabold uppercase tracking-[0.12em] text-muted">{f.label}</span>
+          <span className="num text-[2.75rem] leading-[0.95] text-white sm:text-[3.5rem]">
+            {f.value}
+            <span className="text-[1.25rem] text-muted"> {f.unit}</span>
+          </span>
+          <span className="flex items-center gap-1.5 text-[0.8125rem] font-medium text-gray-300">
+            {f.teams.map((t) => (
+              <TeamMark key={t} abbr={t} size={9} />
+            ))}
+            <span className="truncate">{f.note}</span>
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+type ScoresView = "cards" | "compact";
+const SCORE_VIEWS: readonly Option<ScoresView>[] = [
+  { key: "cards", label: "Cards" },
+  { key: "compact", label: "Compact" },
+];
+
+function Scores({ games, isPending, error, dim }: { games: Game[]; isPending: boolean; error: unknown; dim: boolean }) {
+  const [view, setView] = useState<ScoresView>("cards");
+  return (
+    <Panel title="Scores" delay={0.1} actions={<Segmented options={SCORE_VIEWS} value={view} onChange={setView} label="Scores view" />}>
+      <QueryState isPending={isPending} error={error} empty={games.length === 0} emptyText="No games scheduled this week." rows={4}>
+        {view === "cards" ? (
+          <ul className={`grid gap-3 sm:grid-cols-2 xl:grid-cols-4 ${dim ? "opacity-60" : ""}`}>
+            {games.map((g) => (
+              <li key={g.game_id}>
+                <GameCard game={g} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <ul className={`flex flex-col gap-1 ${dim ? "opacity-60" : ""}`}>
+            {games.map((g) => (
+              <li key={g.game_id}>
+                <GameRow game={g} />
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="text-xs text-faint">Scores and stats refresh once a day, early each morning.</p>
+      </QueryState>
+    </Panel>
+  );
+}
+
+function outcome(g: Game) {
+  const aw = g.is_final && (g.away.score ?? 0) > (g.home.score ?? 0);
+  const hw = g.is_final && (g.home.score ?? 0) > (g.away.score ?? 0);
+  return { aw, hw };
+}
+
+function status(g: Game) {
+  if (g.is_final) return g.is_overtime ? "Final/OT" : "Final";
+  return `${shortDate(g.game_date).split(",")[0] ?? ""} ${kickoff(g.kickoff_time_et)}`.trim();
+}
+
+function GameCard({ game: g }: { game: Game }) {
+  const { aw, hw } = outcome(g);
+  const label = `${team(g.away.team)?.name ?? g.away.team} ${g.away.score ?? ""} at ${team(g.home.team)?.name ?? g.home.team} ${g.home.score ?? ""}, ${status(g)}`;
+  return (
+    <article
+      aria-label={label}
+      className="relative flex flex-col gap-3 overflow-hidden rounded-[18px] p-4 transition-transform duration-200 hover:-translate-y-0.5"
+      style={{
+        background: "#0b0b0c",
+        border: g.is_final ? "1px solid rgba(255,255,255,0.1)" : "1px solid var(--tb)",
+        boxShadow: g.is_final ? undefined : "0 0 34px -8px color-mix(in srgb, var(--tb) 80%, transparent)",
+      }}
+    >
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background: `radial-gradient(140px 110px at 0% 0%, ${alpha(bright(g.away.team), aw ? 0.55 : 0.28)}, transparent 75%), radial-gradient(150px 120px at 100% 100%, ${alpha(bright(g.home.team), hw ? 0.55 : 0.28)}, transparent 75%), repeating-linear-gradient(115deg, rgba(255,255,255,0.03) 0 2px, transparent 2px 16px)`,
+        }}
+      />
+      <div className="relative flex items-center justify-between text-[0.6875rem] font-extrabold uppercase tracking-[0.1em] text-gray-300" aria-hidden="true">
+        <span>{shortDate(g.game_date)}</span>
+        {g.is_final ? (
+          <span className="text-muted">{status(g)}</span>
+        ) : (
+          <span className="rounded-full px-2 py-0.5 text-white" style={{ background: "var(--tb)" }}>
+            {kickoff(g.kickoff_time_et)}
+          </span>
+        )}
       </div>
-      <TeamLine side={away} won={awayWon} final={is_final} />
-      <TeamLine side={home} won={homeWon} final={is_final} home />
-      {!is_final && game.spread_line != null && (
-        <p className="text-xs text-muted">
-          {game.spread_line === 0
-            ? "Pick'em"
-            : `${game.spread_line > 0 ? home.team : away.team} by ${Math.abs(game.spread_line)}`}
-          {game.total_line != null && <> · O/U {game.total_line}</>}
+      {([
+        [g.away, aw],
+        [g.home, hw],
+      ] as const).map(([side, won]) => (
+        <div key={side.team} className="relative flex items-center gap-2.5" aria-hidden="true">
+          <TeamMark abbr={side.team} size={16} />
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className={`num truncate text-[1.5rem] leading-none ${won || !g.is_final ? "text-white" : "text-muted"}`}>
+              {team(side.team)?.short ?? side.team}
+            </span>
+            {side.qb_name && <span className="truncate text-xs text-faint">{side.qb_name}</span>}
+          </span>
+          {side.score != null && (
+            <span className={`num text-[2.5rem] leading-[0.9] ${won ? "text-white" : "text-faint"}`} style={won ? { textShadow: "0 0 18px rgba(255,255,255,0.35)" } : undefined}>
+              {side.score}
+            </span>
+          )}
+        </div>
+      ))}
+      {!g.is_final && g.spread_line != null && (
+        <p className="relative text-xs font-semibold text-gray-300">
+          {g.spread_line === 0 ? "Pick'em" : `${g.spread_line > 0 ? g.home.team : g.away.team} by ${Math.abs(g.spread_line)}`}
+          {g.total_line != null && <> · O/U {g.total_line}</>}
         </p>
       )}
     </article>
   );
 }
 
-function TeamLine({ side, won, final, home = false }: { side: TeamScore; won: boolean; final: boolean; home?: boolean }) {
-  const t = team(side.team);
+function GameRow({ game: g }: { game: Game }) {
+  const { aw, hw } = outcome(g);
   return (
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-2.5">
-        <TeamMark abbr={side.team} size={16} />
-        <div className="flex min-w-0 flex-col">
-          <span className={`truncate ${won ? "font-semibold" : final ? "text-muted" : "font-medium"}`}>
-            {t?.short ?? side.team}
-            {home && <span className="sr-only"> (home)</span>}
-          </span>
-          {side.qb_name && <span className="truncate text-xs text-faint">{side.qb_name}</span>}
-        </div>
-      </div>
-      {side.score != null && (
-        <span className={`figures font-display text-2xl leading-none ${won ? "font-bold" : "text-muted"}`}>{side.score}</span>
-      )}
+    <div
+      className="grid grid-cols-[minmax(0,1fr)_4.5rem_minmax(0,1fr)] items-center gap-3 rounded-[12px] px-3 py-2.5 sm:grid-cols-[6rem_minmax(0,1fr)_5.5rem_minmax(0,1fr)_5.5rem]"
+      style={{
+        background: `linear-gradient(90deg, ${alpha(bright(g.away.team), aw ? 0.22 : 0.07)}, rgba(255,255,255,0.02) 40%, rgba(255,255,255,0.02) 60%, ${alpha(bright(g.home.team), hw ? 0.22 : 0.07)})`,
+      }}
+    >
+      <span className="hidden text-[0.6875rem] font-bold uppercase tracking-[0.08em] text-muted sm:block">{shortDate(g.game_date)}</span>
+      <span className="flex items-center justify-end gap-2">
+        <span className={`num truncate text-[1.25rem] ${aw || !g.is_final ? "text-white" : "text-muted"}`}>{team(g.away.team)?.short ?? g.away.team}</span>
+        <TeamMark abbr={g.away.team} size={14} />
+      </span>
+      <span className="num text-center text-[1.5rem] text-white">
+        {g.is_final ? `${g.away.score}–${g.home.score}` : kickoff(g.kickoff_time_et).replace(" ET", "")}
+      </span>
+      <span className="flex items-center gap-2">
+        <TeamMark abbr={g.home.team} size={14} />
+        <span className={`num truncate text-[1.25rem] ${hw || !g.is_final ? "text-white" : "text-muted"}`}>{team(g.home.team)?.short ?? g.home.team}</span>
+      </span>
+      <span className={`hidden text-right text-[0.6875rem] font-extrabold uppercase tracking-[0.1em] sm:block ${g.is_final ? "text-muted" : "text-[var(--tb)]"}`}>
+        {g.is_final ? status(g) : "Upcoming"}
+      </span>
     </div>
+  );
+}
+
+type LeadersView = "ranked" | "bars";
+const LEADER_VIEWS: readonly Option<LeadersView>[] = [
+  { key: "ranked", label: "Ranked" },
+  { key: "bars", label: "Bars" },
+];
+
+function Leaders({ season }: { season: number | undefined }) {
+  const leaders = useLeaders(season);
+  const boards = leaders.data?.boards ?? [];
+  const [key, setKey] = useState<string | undefined>(undefined);
+  const [view, setView] = useState<LeadersView>("ranked");
+  const board = boards.find((b) => b.key === key) ?? boards[0];
+  const top = board?.rows[0]?.value ?? 1;
+
+  return (
+    <Panel
+      title="League leaders"
+      subtitle={leaders.data?.through_week ? `Through week ${leaders.data.through_week}` : undefined}
+      delay={0.15}
+      actions={<Segmented options={LEADER_VIEWS} value={view} onChange={setView} label="Leaders view" />}
+    >
+      <QueryState isPending={leaders.isPending} error={leaders.error} empty={!board} rows={5}>
+        <ChipRow options={boards.map((b) => ({ key: b.key, label: b.label }))} value={board?.key ?? ""} onChange={setKey} label="Stat" />
+        {view === "ranked" ? (
+          <ol className="flex flex-col gap-2">
+            {board?.rows.map((r, i) => (
+              <li key={r.player_id}>
+                <LeaderLink row={r} rank={i + 1} decimals={board.decimals} />
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <ol className="flex flex-col gap-4">
+            {board?.rows.map((r, i) => (
+              <li key={r.player_id}>
+                <Link to={`/players/${r.player_id}`} className="group flex flex-col gap-1.5">
+                  <span className="flex items-baseline justify-between text-sm font-semibold">
+                    <span className="group-hover:underline group-hover:underline-offset-4">
+                      {r.name} <span className="text-faint">{r.team}</span>
+                    </span>
+                    <span className="num text-[1.5rem]">{num(r.value, board.decimals)}</span>
+                  </span>
+                  <span className="block h-4 overflow-hidden rounded-md bg-white/[0.06]">
+                    <span
+                      className="grow-right block h-full rounded-md"
+                      style={{
+                        width: `${(r.value / top) * 100}%`,
+                        background: `linear-gradient(90deg, ${team(r.team)?.primary ?? "#374151"}, ${bright(r.team)})`,
+                        boxShadow: `0 0 18px -2px ${alpha(bright(r.team), 0.8)}, inset 0 1px 0 rgba(255,255,255,0.35)`,
+                        animationDelay: `${i * 0.08}s`,
+                      }}
+                    />
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ol>
+        )}
+      </QueryState>
+    </Panel>
+  );
+}
+
+function LeaderLink({ row: r, rank, decimals }: { row: LeaderRow; rank: number; decimals: number }) {
+  const first = rank === 1;
+  const b = bright(r.team);
+  const p = team(r.team)?.primary ?? "#374151";
+  return (
+    <Link
+      to={`/players/${r.player_id}`}
+      className="relative flex items-center gap-3 overflow-hidden rounded-[14px] px-3.5 transition-transform duration-200 hover:-translate-y-0.5"
+      style={
+        first
+          ? {
+              padding: "1rem 0.875rem",
+              background: `linear-gradient(100deg, ${alpha(p, 0.85)}, ${alpha(b, 0.35)} 55%, rgba(255,255,255,0.03))`,
+              border: `1px solid ${alpha(b, 0.7)}`,
+              boxShadow: `0 0 34px -10px ${alpha(b, 0.9)}`,
+            }
+          : {
+              padding: "0.7rem 0.875rem",
+              background: `linear-gradient(90deg, ${alpha(b, 0.14)}, rgba(255,255,255,0.02) 45%)`,
+              border: "1px solid rgba(255,255,255,0.06)",
+            }
+      }
+    >
+      {first && (
+        <span
+          aria-hidden="true"
+          className="sweep pointer-events-none absolute inset-y-0 left-0 w-1/5"
+          style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent)" }}
+        />
+      )}
+      <span className="num relative w-7 text-[1.85rem] leading-none" style={{ color: first ? b : "#4b5563" }}>
+        {rank}
+      </span>
+      <TeamMark abbr={r.team} size={14} />
+      <span className="relative flex min-w-0 flex-1 flex-col">
+        <span className="truncate font-bold text-white">{r.name}</span>
+        <span className="text-xs font-semibold text-gray-300">
+          {r.position} · {team(r.team)?.short ?? r.team} · {r.games} games
+        </span>
+      </span>
+      <span className={`num relative leading-none text-white ${first ? "text-[2.25rem]" : "text-[1.75rem]"}`}>{num(r.value, decimals)}</span>
+    </Link>
+  );
+}
+
+const STATUS_COLOR: Record<InjuryStatus, string> = { Out: "var(--tb)", Doubtful: "#ffffff", Questionable: "#6b7280" };
+
+function Injuries({ season }: { season: number | undefined }) {
+  const injuries = useInjuries(season);
+  const [statusKey, setStatus] = useState<InjuryStatus>("Out");
+  const [all, setAll] = useState(false);
+  const data = injuries.data;
+  const counts = data?.counts ?? { Out: 0, Doubtful: 0, Questionable: 0 };
+  const total = counts.Out + counts.Doubtful + counts.Questionable;
+  const rows = (data?.rows ?? []).filter((r) => r.status === statusKey);
+  const visible = all ? rows : rows.slice(0, 8);
+
+  let offset = 25;
+  const arcs = (["Out", "Doubtful", "Questionable"] as const).map((s) => {
+    const share = total ? (counts[s] / total) * 100 : 0;
+    const arc = { s, share, offset };
+    offset -= share;
+    return arc;
+  });
+
+  return (
+    <Panel title="Injury report" subtitle={data?.week ? `Week ${data.week}` : undefined} delay={0.2}>
+      <QueryState isPending={injuries.isPending} error={injuries.error} empty={!data?.week} rows={5}>
+        <div className="flex items-center gap-5">
+          <svg
+            width="128"
+            height="128"
+            viewBox="0 0 42 42"
+            role="img"
+            aria-label={`${total} players listed: ${counts.Out} out, ${counts.Doubtful} doubtful, ${counts.Questionable} questionable`}
+            className="shrink-0"
+            style={{ filter: "drop-shadow(0 0 14px color-mix(in srgb, var(--tb) 45%, transparent))" }}
+          >
+            <circle cx="21" cy="21" r="15.915" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5.5" />
+            {arcs.map((a) => (
+              <circle
+                key={a.s}
+                cx="21"
+                cy="21"
+                r="15.915"
+                fill="none"
+                strokeWidth="5.5"
+                strokeDasharray={`${a.share} ${100 - a.share}`}
+                strokeDashoffset={a.offset}
+                style={{ stroke: STATUS_COLOR[a.s] }}
+              />
+            ))}
+            <text x="21" y="22.5" textAnchor="middle" className="num" fontSize="11" fill="#fff">
+              {total}
+            </text>
+            <text x="21" y="27.5" textAnchor="middle" fontSize="3" fontWeight="700" fill="#9ca3af" letterSpacing="0.3">
+              LISTED
+            </text>
+          </svg>
+          <div className="flex flex-1 flex-col gap-2" role="group" aria-label="Game status">
+            {(["Out", "Doubtful", "Questionable"] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                aria-pressed={s === statusKey}
+                onClick={() => {
+                  setStatus(s);
+                  setAll(false);
+                }}
+                className="flex min-h-11 items-center gap-2.5 rounded-[12px] px-3.5 text-sm font-bold text-ink"
+                style={{
+                  background: s === statusKey ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.03)",
+                  border: `1px solid ${s === statusKey ? STATUS_COLOR[s] : "rgba(255,255,255,0.07)"}`,
+                }}
+              >
+                <span aria-hidden="true" className="h-3 w-3 rounded-[3px]" style={{ background: STATUS_COLOR[s], boxShadow: `0 0 12px ${STATUS_COLOR[s]}` }} />
+                <span className="flex-1 text-left">{s}</span>
+                <span className="num text-[1.4rem]">{counts[s]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted">Nobody listed as {statusKey.toLowerCase()} this week.</p>
+        ) : (
+          <ul className="flex flex-col">
+            {visible.map((r) => (
+              <li key={`${r.team}-${r.player_name}`} className="flex items-center gap-3 border-b border-white/[0.06] py-2.5 last:border-b-0">
+                <TeamMark abbr={r.team} size={12} />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  {r.player_id ? (
+                    <Link to={`/players/${r.player_id}`} className="truncate font-bold hover:underline hover:underline-offset-4">
+                      {r.player_name}
+                    </Link>
+                  ) : (
+                    <span className="truncate font-bold">{r.player_name}</span>
+                  )}
+                  <span className="truncate text-xs font-medium text-muted">
+                    {[r.position, team(r.team)?.short ?? r.team, r.injury].filter(Boolean).join(" · ")}
+                  </span>
+                </span>
+                <span
+                  className="rounded-full px-2.5 py-1 text-[0.6875rem] font-extrabold uppercase tracking-[0.08em]"
+                  style={
+                    r.status === "Out"
+                      ? { background: "var(--tb)", color: "#fff" }
+                      : r.status === "Doubtful"
+                        ? { background: "#fff", color: "#0a0a0a" }
+                        : { background: "rgba(255,255,255,0.12)", color: "#e5e7eb" }
+                  }
+                >
+                  {r.status}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {rows.length > 8 && (
+          <button type="button" className="pill self-start" onClick={() => setAll((v) => !v)}>
+            {all ? "Show fewer" : `Show all ${rows.length}`}
+          </button>
+        )}
+      </QueryState>
+    </Panel>
   );
 }
 
 function Headlines() {
   const news = useNews();
-  const [all, setAll] = useState(false);
   const items = news.data?.items ?? [];
-  const visible = all ? items : items.slice(0, 8);
+  const sources = [...new Set(items.map((i) => i.source))].sort();
+  const [source, setSource] = useState("all");
+  const [all, setAll] = useState(false);
+  const filtered = source === "all" ? items : items.filter((i) => i.source === source);
+  const visible = all ? filtered : filtered.slice(0, 9);
   const failed = news.data?.sources_failed ?? [];
 
   return (
-    <Section
+    <Panel
       title="Headlines"
-      aside={news.data?.fetched_at && <span className="text-muted">Updated {ago(news.data.fetched_at).toLowerCase()}</span>}
+      subtitle={news.data?.fetched_at ? `Updated ${ago(news.data.fetched_at).toLowerCase()}` : undefined}
+      delay={0.25}
     >
       <QueryState
         isPending={news.isPending}
@@ -155,167 +567,62 @@ function Headlines() {
             ? `Couldn't load headlines from ${failed.join(", ")}. They'll retry in 15 minutes.`
             : "Headlines are loading for the first time. Check back in a minute."
         }
-        rows={5}
+        rows={4}
       >
-        <ul className="flex flex-col">
-          {visible.map((item) => (
-            <li key={item.url} className="border-b border-line last:border-b-0">
-              <a
-                href={item.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group flex items-start justify-between gap-3 py-3"
-              >
-                <span className="flex min-w-0 flex-col gap-0.5">
-                  <span className="font-medium group-hover:underline group-hover:underline-offset-4">{item.title}</span>
-                  <span className="text-sm text-muted">
-                    {item.source}
-                    {item.published_at && <> · {ago(item.published_at)}</>}
-                  </span>
-                </span>
-                <ExternalLink size={16} className="mt-1 shrink-0 text-faint" aria-hidden="true" />
-                <span className="sr-only">(opens in a new tab)</span>
-              </a>
+        {sources.length > 1 && (
+          <ChipRow
+            options={[{ key: "all", label: "All" }, ...sources.map((s) => ({ key: s, label: s }))]}
+            value={source}
+            onChange={(s) => {
+              setSource(s);
+              setAll(false);
+            }}
+            label="Source"
+          />
+        )}
+        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {visible.map((item, i) => (
+            <li key={item.url}>
+              <HeadlineCard item={item} lead={i === 0} />
             </li>
           ))}
         </ul>
-        {items.length > 8 && (
-          <button type="button" className="btn btn-quiet self-start" onClick={() => setAll((v) => !v)}>
-            {all ? "Show fewer" : `Show all ${items.length}`}
+        {filtered.length > 9 && (
+          <button type="button" className="pill self-start" onClick={() => setAll((v) => !v)}>
+            {all ? "Show fewer" : `Show all ${filtered.length}`}
           </button>
         )}
-        {failed.length > 0 && items.length > 0 && (
-          <Notice>Not loading right now: {failed.join(", ")}.</Notice>
-        )}
+        {failed.length > 0 && <Notice>Not loading right now: {failed.join(", ")}.</Notice>}
       </QueryState>
-    </Section>
+    </Panel>
   );
 }
 
-function LeadersCard({ season }: { season: number | undefined }) {
-  const leaders = useLeaders(season);
-  const boards = leaders.data?.boards ?? [];
-  const [key, setKey] = useState<string | undefined>(undefined);
-  const board = boards.find((b) => b.key === key) ?? boards[0];
-
+function HeadlineCard({ item, lead }: { item: NewsItem; lead: boolean }) {
   return (
-    <Section
-      title="League leaders"
-      aside={leaders.data?.through_week && <span className="text-muted">Through week {leaders.data.through_week}</span>}
+    <a
+      href={item.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group flex h-full flex-col gap-2.5 rounded-[16px] p-4 transition-transform duration-200 hover:-translate-y-0.5"
+      style={
+        lead
+          ? {
+              background: "linear-gradient(140deg, color-mix(in srgb, var(--tb) 30%, transparent), rgba(255,255,255,0.03) 60%)",
+              border: "1px solid color-mix(in srgb, var(--tb) 50%, transparent)",
+            }
+          : { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }
+      }
     >
-      <QueryState isPending={leaders.isPending} error={leaders.error} empty={!board} rows={5}>
-        <div className="scroll-row -mx-1 px-1" role="group" aria-label="Stat">
-          {boards.map((b) => (
-            <button
-              key={b.key}
-              type="button"
-              className="chip"
-              aria-pressed={b.key === board?.key}
-              onClick={() => setKey(b.key)}
-            >
-              {b.label}
-            </button>
-          ))}
-        </div>
-        <ol className="flex flex-col">
-          {board?.rows.map((r, i) => (
-            <li key={r.player_id}>
-              <Link
-                to={`/players/${r.player_id}`}
-                className="flex min-h-12 items-center gap-3 rounded-[var(--radius-control)] px-2 hover:bg-sunken"
-              >
-                <span className="figures w-5 text-right text-sm text-faint">{i + 1}</span>
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate font-medium">{r.name}</span>
-                  <span className="flex items-center gap-2 text-xs text-muted">
-                    {r.position}
-                    <TeamTag abbr={r.team} />
-                    <span>{r.games} games</span>
-                  </span>
-                </span>
-                <span className="figures font-display text-xl font-bold">{num(r.value, board.decimals)}</span>
-              </Link>
-            </li>
-          ))}
-        </ol>
-      </QueryState>
-    </Section>
-  );
-}
-
-const STATUS_TONE: Record<InjuryStatus, string> = {
-  Out: "bg-[var(--color-alert-tint)] text-alert",
-  Doubtful: "bg-[var(--color-warn-tint)] text-warn",
-  Questionable: "bg-[var(--color-warn-tint)] text-warn",
-};
-
-function InjuryCard({ season }: { season: number | undefined }) {
-  const injuries = useInjuries(season);
-  const [status, setStatus] = useState<InjuryStatus>("Out");
-  const [all, setAll] = useState(false);
-  const rows = (injuries.data?.rows ?? []).filter((r) => r.status === status);
-  const visible = all ? rows : rows.slice(0, 10);
-  const counts = injuries.data?.counts;
-
-  return (
-    <Section
-      title="Injury report"
-      aside={injuries.data?.week && <span className="text-muted">Week {injuries.data.week}</span>}
-    >
-      <QueryState isPending={injuries.isPending} error={injuries.error} empty={!injuries.data?.week} rows={5}>
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Game status">
-          {(["Out", "Doubtful", "Questionable"] as const).map((s) => (
-            <button
-              key={s}
-              type="button"
-              className="chip"
-              aria-pressed={s === status}
-              onClick={() => {
-                setStatus(s);
-                setAll(false);
-              }}
-            >
-              {s}
-              <span className="figures opacity-70">{counts?.[s] ?? 0}</span>
-            </button>
-          ))}
-        </div>
-        {rows.length === 0 ? (
-          <p className="text-sm text-muted">Nobody listed as {status.toLowerCase()} this week.</p>
-        ) : (
-          <ul className="flex flex-col">
-            {visible.map((r) => {
-              const name = <span className="truncate font-medium">{r.player_name}</span>;
-              return (
-                <li key={`${r.team}-${r.player_name}`} className="flex min-h-12 items-center justify-between gap-3 border-b border-line py-2 last:border-b-0">
-                  <span className="flex min-w-0 flex-col">
-                    {r.player_id ? (
-                      <Link to={`/players/${r.player_id}`} className="truncate hover:underline hover:underline-offset-4">
-                        {name}
-                      </Link>
-                    ) : (
-                      name
-                    )}
-                    <span className="flex items-center gap-2 text-xs text-muted">
-                      {r.position}
-                      <TeamTag abbr={r.team} />
-                      {r.injury && <span className="truncate">{r.injury}</span>}
-                    </span>
-                  </span>
-                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_TONE[r.status]}`}>
-                    {r.status}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {rows.length > 10 && (
-          <button type="button" className="btn btn-quiet self-start" onClick={() => setAll((v) => !v)}>
-            {all ? "Show fewer" : `Show all ${rows.length}`}
-          </button>
-        )}
-      </QueryState>
-    </Section>
+      <span className="flex items-center justify-between gap-2 text-[0.6875rem] font-extrabold uppercase tracking-[0.1em] text-[var(--tb)]">
+        <span className="truncate">
+          {item.source}
+          {item.published_at && <> · {ago(item.published_at)}</>}
+        </span>
+        <ExternalLink size={14} className="shrink-0 text-faint" aria-hidden="true" />
+      </span>
+      <span className="text-base font-bold leading-snug text-white group-hover:underline group-hover:underline-offset-4">{item.title}</span>
+      <span className="sr-only">(opens in a new tab)</span>
+    </a>
   );
 }

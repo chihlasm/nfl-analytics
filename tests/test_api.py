@@ -122,6 +122,22 @@ def test_player_search_and_profile(client: TestClient) -> None:
 
     wr = client.get(f"/api/players/{WR}").json()
     assert {mv["name"] for mv in wr["metrics"]} == {"receiver_drops"}
+    assert wr["throw_map"] == [] and wr["depth"] == []
+
+
+def test_qb_throw_map_and_depth(client: TestClient) -> None:
+    profile = client.get(f"/api/players/{QB}").json()
+    # Real attempts only: the spike (play 3) and the sack (play 8) never count.
+    depth = {d["depth"]: (d["attempts"], d["completions"], d["misses"]) for d in profile["depth"]}
+    # Misses: play 1 (short), play 2 (intermediate) and play 6 (deep, uncatchable).
+    # Play 4 is a throwaway and play 5 was catchable, so neither is his miss.
+    assert depth == {"short": (3, 0, 1), "intermediate": (2, 1, 1), "deep": (1, 0, 1)}
+    assert [d["depth"] for d in profile["depth"]] == ["short", "intermediate", "deep"]
+    cells = {(c["depth"], c["direction"]): c for c in profile["throw_map"]}
+    assert cells[("short", "left")]["attempts"] == 2
+    assert cells[("intermediate", "left")]["completion_rate"] == 1.0
+    assert cells[("deep", "right")]["attempts"] == 1
+    assert sum(c["attempts"] for c in profile["throw_map"]) == 6
 
 
 def test_validation_and_missing_player(client: TestClient) -> None:

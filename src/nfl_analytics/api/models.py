@@ -118,6 +118,25 @@ class SeasonLine(BaseModel):
     stats: dict[str, float | None]
 
 
+class ThrowCell(BaseModel):
+    """One cell of a QB's throw map: a depth band x a field direction."""
+
+    depth: str  # short | intermediate | deep
+    direction: str  # left | middle | right
+    attempts: int
+    completion_rate: float | None
+    epa_per_attempt: float | None
+
+
+class DepthLine(BaseModel):
+    """A QB's attempts at one depth band, split into what happened to each."""
+
+    depth: str  # behind_los | short | intermediate | deep
+    attempts: int
+    completions: int
+    misses: int | None  # charted uncatchable incompletions; None before FTN (2022)
+
+
 class MetricValue(BaseModel):
     name: str
     label: str
@@ -142,6 +161,8 @@ class PlayerProfile(BaseModel):
     weeks: list[WeekLine]
     career: list[SeasonLine]
     metrics: list[MetricValue]
+    throw_map: list[ThrowCell]
+    depth: list[DepthLine]
 
 
 class NewsItem(BaseModel):

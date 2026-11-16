@@ -181,6 +181,53 @@ def search_players(cur: duckdb.DuckDBPyConnection, q: str, limit: int) -> list[m
     return [m.PlayerSummary(**r) for r in rows]
 
 
+DEPTH_ORDER = ("behind_los", "short", "intermediate", "deep")
+
+
+def qb_splits(
+    cur: duckdb.DuckDBPyConnection, bio: dict[str, Any], season: int
+) -> tuple[list[m.ThrowCell], list[m.DepthLine]]:
+    """A quarterback's regular-season throw map and depth breakdown (empty for others).
+
+    Spikes, sacks and scrambles are excluded (is_pass_attempt). Direction comes from
+    play-by-play for every season; "misses" need FTN charting, so they are None before
+    2022 rather than a misleading zero.
+    """
+    if bio["position_group"] != "QB":
+        return [], []
+    scope = {"id": bio["player_id"], "s": season}
+    where = "passer_player_id = $id AND season = $s AND season_type = 'REG' AND is_pass_attempt"
+    cells = [
+        m.ThrowCell(**r)
+        for r in _rows(
+            cur,
+            "SELECT depth_bucket AS depth, pass_location AS direction, "
+            "count(*)::INTEGER AS attempts, avg(complete_pass) AS completion_rate, "
+            "avg(epa) AS epa_per_attempt "
+            f"FROM dropbacks WHERE {where} "
+            "AND depth_bucket IN ('short', 'intermediate', 'deep') "
+            "AND pass_location IN ('left', 'middle', 'right') "
+            "GROUP BY depth_bucket, pass_location "
+            "ORDER BY list_position($order, depth_bucket), pass_location",
+            {**scope, "order": list(DEPTH_ORDER)},
+        )
+    ]
+    depth = [
+        m.DepthLine(**r)
+        for r in _rows(
+            cur,
+            "SELECT depth_bucket AS depth, count(*)::INTEGER AS attempts, "
+            "count(*) FILTER (WHERE complete_pass = 1)::INTEGER AS completions, "
+            "CASE WHEN bool_or(is_charted) "
+            "  THEN count(*) FILTER (WHERE is_inaccurate_incompletion)::INTEGER END AS misses "
+            f"FROM dropbacks WHERE {where} AND depth_bucket IS NOT NULL "
+            "GROUP BY depth_bucket ORDER BY list_position($order, depth_bucket)",
+            {**scope, "order": list(DEPTH_ORDER)},
+        )
+    ]
+    return cells, depth
+
+
 def player_profile(
     cur: duckdb.DuckDBPyConnection, player_id: str, season: int | None
 ) -> m.PlayerProfile | None:
@@ -282,6 +329,8 @@ def player_profile(
             else f"{bio['draft_year']}, undrafted"
         )
 
+    throw_map, depth = ([], []) if season is None else qb_splits(cur, bio, season)
+
     return m.PlayerProfile(
         player=m.PlayerSummary(
             player_id=bio["player_id"],
@@ -303,4 +352,6 @@ def player_profile(
         weeks=weeks,
         career=career,
         metrics=metrics,
+        throw_map=throw_map,
+        depth=depth,
     )
