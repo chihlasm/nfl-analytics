@@ -11,6 +11,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
+from nfl_analytics.api.stats import STATS
 from nfl_analytics.config import Settings
 
 SEASON = 2026
@@ -102,14 +103,19 @@ def write_fixture_cache(cache: Path) -> None:
     """,
         cache / "ftn" / f"ftn_charting_{SEASON}.parquet",
     )
+    # Every dashboard stat gets a value: (catalog index % 7 + 1) x the row's weight w.
+    stat_cols = ", ".join(f"{(i % 7) + 1}::DOUBLE * w AS {s.key}" for i, s in enumerate(STATS))
     _write(
         con,
         f"""
-        SELECT * FROM (VALUES
-            ('{QB}', {SEASON}, 5, 'REG', 30),
-            ('{QB}', {SEASON}, 6, 'REG', 28),
-            ('{WR}', {SEASON}, 5, 'REG', 0)
-        ) t(player_id, season, week, season_type, attempts)
+        SELECT player_id, player_display_name, position, team, opponent_team, season, week,
+               season_type, {stat_cols}
+        FROM (VALUES
+            ('{QB}', 'Michael Penix Jr.', 'QB', 'ATL', 'BAL', {SEASON}, 5, 'REG', 1),
+            ('{QB}', 'Michael Penix Jr.', 'QB', 'ATL', 'CHI', {SEASON}, 6, 'REG', 2),
+            ('{WR}', 'Drake London', 'WR', 'ATL', 'BAL', {SEASON}, 5, 'REG', 3)
+        ) t(player_id, player_display_name, position, team, opponent_team, season, week,
+            season_type, w)
     """,
         cache / "player_week" / f"stats_player_week_{SEASON}.parquet",
     )
@@ -130,8 +136,11 @@ def write_fixture_cache(cache: Path) -> None:
     _write(
         con,
         f"""
-        SELECT '{QB}' AS gsis_id, {SEASON} AS season, 6 AS week, 'Questionable' AS report_status,
-               'Knee' AS report_primary_injury, 'Limited' AS practice_status
+        SELECT '{QB}' AS gsis_id, {SEASON} AS season, 'REG' AS season_type, 6 AS week,
+               'ATL' AS team, 'Michael Penix Jr.' AS full_name, 'QB' AS position,
+               'Questionable' AS report_status, 'Knee' AS report_primary_injury,
+               NULL::VARCHAR AS report_secondary_injury, 'Limited' AS practice_status,
+               'Knee' AS practice_primary_injury
     """,
         cache / "injuries" / f"injuries_{SEASON}.parquet",
     )
@@ -142,7 +151,6 @@ def write_fixture_cache(cache: Path) -> None:
             ("last_name", "VARCHAR"),
             ("short_name", "VARCHAR"),
             ("football_name", "VARCHAR"),
-            ("position_group", "VARCHAR"),
             ("latest_team", "VARCHAR"),
             ("status", "VARCHAR"),
             ("jersey_number", "INTEGER"),
@@ -166,10 +174,10 @@ def write_fixture_cache(cache: Path) -> None:
         con,
         f"""
         SELECT t.*, {null_player_cols} FROM (VALUES
-            ('{QB}', 'Michael Penix Jr.', 'QB', 'PeniMi00', {SEASON}),
-            ('{WR}', 'Drake London', 'WR', 'LondDr00', {SEASON}),
-            ('00-0000001', 'Michael Penix Sr.', 'QB', NULL, 1999)
-        ) t(gsis_id, display_name, position, pfr_id, last_season)
+            ('{QB}', 'Michael Penix Jr.', 'QB', 'QB', 'PeniMi00', {SEASON}),
+            ('{WR}', 'Drake London', 'WR', 'WR', 'LondDr00', {SEASON}),
+            ('00-0000001', 'Michael Penix Sr.', 'QB', 'QB', NULL, 1999)
+        ) t(gsis_id, display_name, position, position_group, pfr_id, last_season)
     """,
         cache / "players" / "players.parquet",
     )

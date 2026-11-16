@@ -10,6 +10,7 @@ The previous database is kept as `nfl.duckdb.prev` for a one-step rollback.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
@@ -29,7 +30,15 @@ log = logging.getLogger(__name__)
 SQL_FILES = ("views.sql", "metrics.sql")
 # A line containing only "-- ;;" separates statements in the bundled SQL files.
 STATEMENT_SEPARATOR = re.compile(r"^--\s*;;\s*$", re.MULTILINE)
-CORE_VIEWS = ("plays", "dropbacks", "targets", "games", "players", "player_weeks")
+CORE_VIEWS = (
+    "plays",
+    "dropbacks",
+    "targets",
+    "games",
+    "players",
+    "player_weeks",
+    "injury_reports",
+)
 
 
 class BuildError(RuntimeError):
@@ -71,6 +80,32 @@ def load_sql(name: str) -> list[str]:
     """Split a bundled SQL file into statements on the `-- ;;` separator."""
     text = resources.files("nfl_analytics.sql").joinpath(name).read_text(encoding="utf-8")
     return [chunk.strip() for chunk in STATEMENT_SEPARATOR.split(text) if chunk.strip()]
+
+
+def sql_fingerprint() -> str:
+    """Short hash of the bundled SQL. Stored in build_info so a new release can tell
+    that the live database was built with older views and rebuild it at startup."""
+    digest = hashlib.sha256()
+    for name in SQL_FILES:
+        digest.update(resources.files("nfl_analytics.sql").joinpath(name).read_bytes())
+    return digest.hexdigest()[:16]
+
+
+def live_sql_fingerprint(db_path: Path) -> str | None:
+    """The SQL fingerprint the live database was built with (None if unknown)."""
+    if not db_path.exists():
+        return None
+    try:
+        con = duckdb.connect(str(db_path), read_only=True)
+    except duckdb.Error:
+        return None
+    try:
+        row = con.execute("SELECT sql_fingerprint FROM build_info").fetchone()
+    except duckdb.Error:
+        return None  # built before fingerprints existed
+    finally:
+        con.close()
+    return str(row[0]) if row and row[0] else None
 
 
 def _load_raw_tables(con: duckdb.DuckDBPyConnection, settings: Settings) -> list[TableStats]:
@@ -156,13 +191,16 @@ def _validate(con: duckdb.DuckDBPyConnection) -> tuple[int | None, int | None]:
 def _write_meta(con: duckdb.DuckDBPyConnection, report: BuildReport, settings: Settings) -> None:
     con.execute(
         "CREATE TABLE build_info AS SELECT "
-        "now() AS built_at, $first AS first_season, $current AS current_season, "
-        "$latest_season AS latest_season, $latest_week AS latest_week",
+        "(now() AT TIME ZONE 'UTC') AS built_at, "
+        "$first AS first_season, $current AS current_season, "
+        "$latest_season AS latest_season, $latest_week AS latest_week, "
+        "$fingerprint AS sql_fingerprint",
         {
             "first": settings.first_season,
             "current": settings.current_season,
             "latest_season": report.latest_season,
             "latest_week": report.latest_week,
+            "fingerprint": sql_fingerprint(),
         },
     )
     con.execute(

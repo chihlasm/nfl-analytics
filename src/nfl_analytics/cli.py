@@ -20,7 +20,12 @@ import sys
 from datetime import UTC, datetime
 from types import FrameType
 
-from nfl_analytics.build import BuildError, build_database
+from nfl_analytics.build import (
+    BuildError,
+    build_database,
+    live_sql_fingerprint,
+    sql_fingerprint,
+)
 from nfl_analytics.config import DataDirError, Settings, ensure_writable_dir
 from nfl_analytics.metrics import MetricError, compute_metric, connect_readonly
 from nfl_analytics.pipeline import Mode, read_status, run
@@ -96,6 +101,14 @@ def cmd_schedule(settings: Settings, args: argparse.Namespace) -> int:
     if not settings.db_path.exists() and not args.no_initial_run:
         log.info("No database yet: running an initial refresh before scheduling")
         safe_run(Mode.DAILY)
+    elif live_sql_fingerprint(settings.db_path) != sql_fingerprint():
+        # A new release changed the views: rebuild from the cache now (no downloads)
+        # instead of waiting for the next scheduled run.
+        log.info("Views changed since the last build: rebuilding from cache")
+        try:
+            build_database(settings)
+        except Exception:
+            log.exception("Startup rebuild failed; the next scheduled run will retry")
 
     log.info(
         "Scheduler started (%s): daily '%s', full '%s'",

@@ -22,6 +22,22 @@
    link; never article text), polled every 15 minutes, names matched to player/team IDs.
 4. Compare page, saved views, fantasy and betting views.
 
+Phase 3a (done, ahead of Phase 2 at Michael's request): `api` service
+(`src/nfl_analytics/api`) and `web/` dashboard with Home (scores, headlines, leaders,
+injuries), player search and player pages. Next in 3b: Team pages, Explorer.
+
+## Frontend (web/)
+- Same stack and design language as WePlan: React 19, react-router 8, TanStack Query 5,
+  Tailwind v4 tokens in `web/src/styles.css`, Vite, served by Caddy. Bricolage
+  Grotesque for headings and figures, IBM Plex Sans for text, `.figures` for numbers.
+  Build screens from `.card`, `.card-inverse` (one per screen), `.tile`, `.chip`,
+  `.segmented`, `.data-table`. Vault (dark) is the default theme, Hearth (light) optional.
+- Colour means TEAM only (`TeamMark`), plus alert/warn for injury status. No decorative colour.
+- TypeScript types in `web/src/lib/api.ts` mirror `api/models.py`; change both together.
+- Charts are hand-written SVG (`WeekBars`); no chart library.
+- Copy: plain, sentence case, active voice; errors say what happened and what to do.
+- Check: `cd web && npm run build` (typecheck + build).
+
 ## Architecture rules
 - `ingest` is the ONLY writer. It builds `nfl.duckdb.building`, validates, then
   atomically replaces `nfl.duckdb`. Every other service opens the DB read-only and

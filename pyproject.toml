@@ -17,7 +17,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+api = [
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.30,<1",
+    "defusedxml>=0.7,<1",
+]
 dev = [
+    "nfl-analytics[api]",
     "pytest>=8",
     "ruff>=0.6",
     "mypy>=1.11",

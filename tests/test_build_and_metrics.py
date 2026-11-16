@@ -3,7 +3,7 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from nfl_analytics.build import BuildError, build_database, load_sql
+from nfl_analytics.build import CORE_VIEWS, BuildError, build_database, load_sql
 from nfl_analytics.config import Settings
 from nfl_analytics.metrics import MetricError, compute_metric, connect_readonly, find_players
 
@@ -18,7 +18,7 @@ def test_build_publishes_database_with_all_views(fixture_settings: Settings) -> 
     assert report.latest_week == 6
     con = connect_readonly(fixture_settings.db_path)
     try:
-        for view in ("plays", "dropbacks", "targets", "games", "players", "player_weeks"):
+        for view in CORE_VIEWS:
             assert con.execute(f"SELECT count(*) FROM {view}").fetchone()[0] > 0, view
         # Joins never multiply rows.
         assert con.execute("SELECT count(*) FROM plays").fetchone()[0] == 9
@@ -119,5 +119,5 @@ def test_rebuild_keeps_previous_database_for_rollback(fixture_settings: Settings
 
 def test_sql_files_split_on_separator_lines_only() -> None:
     statements = load_sql("views.sql")
-    assert len(statements) == 6
+    assert len(statements) == 7
     assert all(s.lstrip().startswith(("--", "CREATE")) for s in statements)
