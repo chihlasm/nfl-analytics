@@ -56,14 +56,22 @@ memory. Disk: about 520 MB of cached Parquet plus about 760 MB for the database.
    # e.g. NFL_DATA_HOST_DIR=/mnt/tank/nfl-analytics
    ```
    The data folder must be writable by the container user (`PUID`/`PGID`, default 1000).
-3. **Start:**
+3. **Create the data folder yourself** before the first start. If Docker creates it,
+   it is owned by root and the container cannot write to it:
+   ```bash
+   mkdir -p data          # or your NFL_DATA_HOST_DIR
+   sudo chown -R 1000:1000 data
+   ```
+   If you skip this, the container stops at startup with a message that gives the
+   exact `chown` command to run.
+4. **Start:**
    ```bash
    docker compose up -d --build
    docker compose logs -f ingest
    ```
    The first start downloads every season (about 520 MB) and builds the database,
    which takes a few minutes. After that it waits for the next scheduled run.
-4. **Check it:**
+5. **Check it:**
    ```bash
    docker compose exec ingest nfl status
    docker compose exec ingest nfl metric short_throw_misses \

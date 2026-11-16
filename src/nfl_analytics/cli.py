@@ -21,11 +21,14 @@ from datetime import UTC, datetime
 from types import FrameType
 
 from nfl_analytics.build import BuildError, build_database
-from nfl_analytics.config import Settings
+from nfl_analytics.config import DataDirError, Settings, ensure_writable_dir
 from nfl_analytics.metrics import MetricError, compute_metric, connect_readonly
 from nfl_analytics.pipeline import Mode, read_status, run
 
 log = logging.getLogger("nfl_analytics")
+
+# Commands that write to the data folder and must check it first.
+WRITING_COMMANDS = frozenset({"refresh", "build", "schedule"})
 
 
 def _configure_logging(level: str) -> None:
@@ -231,7 +234,13 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     _configure_logging(settings.log_level)
     try:
+        if args.command in WRITING_COMMANDS:
+            # Fail fast with a fix-it message instead of failing on every scheduled run.
+            ensure_writable_dir(settings.data_dir)
         return int(args.func(settings, args))
+    except DataDirError as exc:
+        log.error("%s", exc)
+        return 1
     except (MetricError, FileNotFoundError, BuildError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

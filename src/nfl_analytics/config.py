@@ -26,6 +26,30 @@ def detect_current_season(today: date | None = None) -> int:
     return today.year if today.month >= SEASON_ROLLOVER_MONTH else today.year - 1
 
 
+class DataDirError(RuntimeError):
+    """The data folder is missing or not writable by the user the process runs as."""
+
+
+def ensure_writable_dir(path: Path) -> None:
+    """Create `path` if needed and prove we can write to it, with a fix in the error.
+
+    The usual cause is a Docker bind mount whose host folder was auto-created by
+    the Docker daemon (owned by root) while the container runs as UID 1000.
+    """
+    uid, gid = os.getuid(), os.getgid()
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / f".write-test-{os.getpid()}"
+        probe.write_text("ok")
+        probe.unlink()
+    except OSError as exc:
+        raise DataDirError(
+            f"Cannot write to the data folder {path} as user {uid}:{gid} ({exc.strerror}). "
+            f"On the Docker host, give that user ownership of the folder mounted at {path}, "
+            f"for example: sudo chown -R {uid}:{gid} ./data  then restart the container."
+        ) from exc
+
+
 def _env_int(name: str, default: int) -> int:
     raw = os.environ.get(name, "").strip()
     if not raw:

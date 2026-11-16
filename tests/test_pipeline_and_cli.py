@@ -98,3 +98,19 @@ def test_metric_command(
     assert code == 0
     assert "Short-throw misses: 2" in capsys.readouterr().out
     assert cli.main(["metric", "nope", "--player", "x", "--season", "2026"]) == 1
+
+
+def test_unwritable_data_dir_fails_fast_with_fix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def denied(self: Path, *_a: object, **_k: object) -> None:
+        raise PermissionError(13, "Permission denied")
+
+    # Simulate a root-owned bind mount (works even when tests run as root).
+    monkeypatch.setattr(Path, "write_text", denied)
+    monkeypatch.setenv("NFL_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("NFL_CURRENT_SEASON", "2026")
+
+    assert cli.main(["schedule", "--no-initial-run"]) == 1
+    assert "sudo chown" in caplog.text
+    assert "Permission denied" in caplog.text
