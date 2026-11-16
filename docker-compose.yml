@@ -7,8 +7,14 @@
 #
 # Nothing here publishes a host port. Reach the dashboard through the homelab Caddy
 # at nfl.chihlas.com (Tailscale only; see README "Deploy").
+#
+# Images are built locally and tagged :local (never :latest), and Watchtower is
+# disabled for every service: updates arrive deliberately with `git pull` + rebuild.
 
 name: nfl-analytics
+
+x-no-watchtower: &no-watchtower
+  com.centurylinklabs.watchtower.enable: "false"
 
 x-hardened: &hardened
   read_only: true
@@ -27,7 +33,7 @@ services:
     build:
       context: .
       dockerfile: services/ingest/Dockerfile
-    image: nfl-analytics-ingest:latest
+    image: nfl-analytics-ingest:local
     container_name: nfl-ingest
     restart: unless-stopped
     init: true
@@ -36,6 +42,7 @@ services:
       - path: .env
         required: false
     environment:
+      TZ: America/New_York
       NFL_DATA_DIR: /data
     volumes:
       - ${NFL_DATA_HOST_DIR:-./data}:/data
@@ -43,12 +50,13 @@ services:
     networks: [outbound]
     mem_limit: 8g
     logging: *logging
+    labels: *no-watchtower
 
   api:
     build:
       context: .
       dockerfile: services/api/Dockerfile
-    image: nfl-analytics-api:latest
+    image: nfl-analytics-api:local
     container_name: nfl-api
     restart: unless-stopped
     init: true
@@ -57,6 +65,7 @@ services:
       - path: .env
         required: false
     environment:
+      TZ: America/New_York
       NFL_DATA_DIR: /data
     volumes:
       # Read-only: the API can never change the data.
@@ -65,17 +74,30 @@ services:
     networks: [internal, outbound]
     mem_limit: 2g
     logging: *logging
+    labels: *no-watchtower
     <<: *hardened
 
   web:
     build: ./web
-    image: nfl-analytics-web:latest
+    image: nfl-analytics-web:local
     container_name: nfl-web
     restart: unless-stopped
-    depends_on: [api]
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      TZ: America/New_York
     networks: [internal, homelab]
     mem_limit: 256m
     logging: *logging
+    labels: *no-watchtower
+    healthcheck:
+      # The dashboard shell is served AND /api reaches the API through this container.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null && wget -qO- http://127.0.0.1:8080/api/health >/dev/null"]
+      interval: 1m
+      timeout: 5s
+      start_period: 15s
+      retries: 3
     <<: *hardened
     tmpfs: [/tmp, /config, /data]
 

@@ -1,13 +1,22 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from nfl_analytics.api.app import create_app
-from nfl_analytics.api.news import Feed, NewsCache, parse_feed_config, parse_items
+from nfl_analytics.api.models import NewsItem
+from nfl_analytics.api.news import (
+    MAX_PER_SOURCE,
+    Feed,
+    NewsCache,
+    merge_headlines,
+    parse_feed_config,
+    parse_items,
+)
 from nfl_analytics.build import build_database
 from nfl_analytics.config import Settings
 
@@ -142,8 +151,10 @@ def test_api_follows_database_swaps(fixture_settings: Settings, news: NewsCache)
 def test_news_merges_dedupes_and_survives_a_dead_feed(news: NewsCache) -> None:
     snap = news.refresh()
     titles = [i.title for i in snap.items]
-    # Newest first; HTML stripped; the javascript: link and the cross-source duplicate dropped.
-    assert titles == ["Atom headline", "Falcons & Penix prep for Week 6", "Old story"]
+    # Newest first; the javascript: link dropped. The same story (same link) appears in
+    # both feeds: the earlier-published copy (Atom, 11:00) is kept as the original.
+    assert titles == ["Atom headline", "Falcons and Penix prep for Week 6", "Old story"]
+    assert snap.items[1].source == "Atom"
     assert snap.sources_ok == ["Atom", "RSS"]
     assert snap.sources_failed == ["Down"]
     assert all(i.url.startswith("https://") for i in snap.items)
@@ -161,6 +172,35 @@ def test_news_endpoint(client: TestClient, news: NewsCache) -> None:
     news.refresh()
     body = client.get("/api/news").json()
     assert body["items"][0]["source"] == "Atom"
+
+
+def _item(title: str, source: str, minute: int | None, url: str | None = None) -> NewsItem:
+    published = None if minute is None else datetime(2026, 11, 16, 12, minute, tzinfo=UTC)
+    return NewsItem(
+        title=title,
+        url=url or f"https://{source.lower().replace(' ', '')}.test/{title.replace(' ', '-')}",
+        source=source,
+        published_at=published,
+    )
+
+
+def test_syndicated_copy_loses_to_the_original_outlet() -> None:
+    original = _item("Penix limited at practice", "Pro Football Talk", 5)
+    repost = _item("Penix limited at practice", "Yahoo Sports", 20)  # later, different link
+    undated = _item("Penix limited at practice!", "Other", None)
+    merged = merge_headlines([repost, undated, original])
+    assert [(i.source, i.title) for i in merged] == [("Pro Football Talk", original.title)]
+
+
+def test_each_source_is_capped_so_busy_feeds_cannot_crowd_out_others() -> None:
+    busy = [_item(f"Yahoo story {n}", "Yahoo Sports", n) for n in range(40)]
+    slow = [_item("CBS story", "CBS Sports", 0)]
+    merged = merge_headlines(busy + slow)
+    by_source = {s: sum(i.source == s for i in merged) for s in ("Yahoo Sports", "CBS Sports")}
+    assert by_source == {"Yahoo Sports": MAX_PER_SOURCE, "CBS Sports": 1}
+    # Yahoo keeps its newest stories; the result stays newest first.
+    assert merged[0].title == "Yahoo story 39"
+    assert merged[-1].source == "CBS Sports"
 
 
 def test_parse_items_never_keeps_article_text() -> None:
