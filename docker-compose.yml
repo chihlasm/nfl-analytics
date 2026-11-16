@@ -1,9 +1,26 @@
 # NFL Analytics stack for docker-01. Manage it in Dockge or with `docker compose`.
 #
-# Phase 1 runs only the ingest service. The api, mcp and web services are added
-# in later phases and will mount the same data volume READ-ONLY.
+#   ingest  the ONLY writer: downloads nflverse data each morning, publishes nfl.duckdb
+#   api     read-only FastAPI over nfl.duckdb + the news headline reader
+#   web     Caddy serving the dashboard and proxying /api; joins the homelab
+#           reverse-proxy network so the homelab Caddy can reach it at nfl-web:8080
+#
+# Nothing here publishes a host port. Reach the dashboard through the homelab Caddy
+# at nfl.chihlas.com (Tailscale only; see README "Deploy").
 
 name: nfl-analytics
+
+x-hardened: &hardened
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   ingest:
@@ -22,9 +39,51 @@ services:
       NFL_DATA_DIR: /data
     volumes:
       - ${NFL_DATA_HOST_DIR:-./data}:/data
+    # Downloads from GitHub; talks to no other container (they share files, not sockets).
+    networks: [outbound]
     mem_limit: 8g
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *logging
+
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    image: nfl-analytics-api:latest
+    container_name: nfl-api
+    restart: unless-stopped
+    init: true
+    user: "${PUID:-1000}:${PGID:-1000}"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NFL_DATA_DIR: /data
+    volumes:
+      # Read-only: the API can never change the data.
+      - ${NFL_DATA_HOST_DIR:-./data}:/data:ro
+    # internal: talks to web. outbound: fetches news RSS feeds.
+    networks: [internal, outbound]
+    mem_limit: 2g
+    logging: *logging
+    <<: *hardened
+
+  web:
+    build: ./web
+    image: nfl-analytics-web:latest
+    container_name: nfl-web
+    restart: unless-stopped
+    depends_on: [api]
+    networks: [internal, homelab]
+    mem_limit: 256m
+    logging: *logging
+    <<: *hardened
+    tmpfs: [/tmp, /config, /data]
+
+networks:
+  internal:
+    internal: true
+  outbound: {}
+  homelab:
+    # The network the homelab's main Caddy is on (WePlan uses the same one).
+    external: true
+    name: ${HOMELAB_NETWORK:-docker_homelab}

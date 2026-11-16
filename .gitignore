@@ -16,6 +16,10 @@ data/
 *.duckdb.building
 *.duckdb.prev
 
+# Web
+web/node_modules/
+web/dist/
+
 # Environment
 .env
 

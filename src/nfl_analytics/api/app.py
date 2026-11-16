@@ -1,0 +1,132 @@
+"""FastAPI application: read-only endpoints for the dashboard.
+
+Run locally:  uvicorn nfl_analytics.api.app:app --reload
+In Docker the web container (Caddy) proxies /api/* here on port 8000.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager
+from typing import Annotated
+
+import duckdb
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
+
+from nfl_analytics import __version__
+from nfl_analytics.api import models as m
+from nfl_analytics.api import queries
+from nfl_analytics.api.db import Database, DatabaseUnavailable
+from nfl_analytics.api.news import NewsCache, news_from_env
+from nfl_analytics.config import Settings
+
+log = logging.getLogger(__name__)
+
+MIN_SEASON = 1999
+MAX_SEASON = 2100
+
+
+def _cursor(request: Request) -> Iterator[duckdb.DuckDBPyConnection]:
+    """One read-only cursor per request, from the app's Database."""
+    db: Database = request.app.state.db
+    with db.cursor() as cur:
+        yield cur
+
+
+# Module level so FastAPI can resolve them (this module uses postponed annotations).
+Cur = Annotated[duckdb.DuckDBPyConnection, Depends(_cursor)]
+Season = Annotated[int | None, Query(ge=MIN_SEASON, le=MAX_SEASON)]
+WeekParam = Annotated[int | None, Query(ge=0, le=30)]
+Limit = Annotated[int, Query(ge=1, le=25)]
+SearchText = Annotated[str, Query(min_length=2, max_length=60)]
+
+
+def create_app(
+    settings: Settings | None = None,
+    news: NewsCache | None = None,
+    *,
+    start_news: bool = True,
+) -> FastAPI:
+    settings = settings or Settings.from_env()
+    db = Database(settings.db_path)
+    news = news or news_from_env()
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        if start_news:
+            news.start()
+        yield
+        news.stop()
+
+    app = FastAPI(
+        title="NFL Analytics API",
+        version=__version__,
+        lifespan=lifespan,
+        docs_url="/api/docs",
+        openapi_url="/api/openapi.json",
+        redoc_url=None,
+    )
+
+    @app.exception_handler(DatabaseUnavailable)
+    async def unavailable(_req: Request, exc: DatabaseUnavailable) -> JSONResponse:
+        return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+    app.state.db = db
+
+    def season_or_current(cur: duckdb.DuckDBPyConnection, season: int | None) -> int:
+        return season if season is not None else queries.meta(cur).current_season
+
+    @app.get("/api/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok", "version": __version__}
+
+    @app.get("/api/meta", response_model=m.Meta)
+    def get_meta(cur: Cur) -> m.Meta:
+        return queries.meta(cur)
+
+    @app.get("/api/games", response_model=m.Week)
+    def get_games(cur: Cur, season: Season = None, week: WeekParam = None) -> m.Week:
+        return queries.week_games(cur, season_or_current(cur, season), week)
+
+    @app.get("/api/leaders", response_model=m.Leaders)
+    def get_leaders(cur: Cur, season: Season = None, limit: Limit = 5) -> m.Leaders:
+        return queries.leaders(cur, season_or_current(cur, season), limit)
+
+    @app.get("/api/injuries", response_model=m.Injuries)
+    def get_injuries(cur: Cur, season: Season = None) -> m.Injuries:
+        return queries.injuries(cur, season_or_current(cur, season))
+
+    @app.get("/api/players", response_model=list[m.PlayerSummary])
+    def get_players(cur: Cur, q: SearchText, limit: Limit = 10) -> list[m.PlayerSummary]:
+        return queries.search_players(cur, q.strip(), limit)
+
+    @app.get("/api/players/{player_id}", response_model=m.PlayerProfile)
+    def get_player(cur: Cur, player_id: str, season: Season = None) -> m.PlayerProfile:
+        if len(player_id) > 20:
+            raise HTTPException(status_code=404, detail="No player with that ID.")
+        profile = queries.player_profile(cur, player_id, season)
+        if profile is None:
+            raise HTTPException(status_code=404, detail="No player with that ID.")
+        return profile
+
+    @app.get("/api/news", response_model=m.News)
+    def get_news() -> m.News:
+        return news.snapshot()
+
+    return app
+
+
+def _app_from_env() -> FastAPI:
+    logging.basicConfig(
+        level=os.environ.get("NFL_LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+    )
+    return create_app()
+
+
+# `uvicorn nfl_analytics.api.app:app` imports this lazily via the factory below.
+def app() -> FastAPI:  # pragma: no cover - exercised by uvicorn --factory
+    return _app_from_env()

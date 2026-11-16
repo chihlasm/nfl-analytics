@@ -5,14 +5,15 @@
 A self-hosted NFL analytics platform for the homelab. It downloads every free
 nflverse dataset (play-by-play back to 1999, FTN charting, Next Gen Stats,
 rosters, snaps, injuries, schedules) into one DuckDB database, refreshes it
-automatically, and will serve it to a dashboard and to Claude through an MCP
-server.
+automatically, and serves it to a dashboard (and soon to Claude through an MCP
+server).
 
 | Phase | What | Status |
 | --- | --- | --- |
-| 1 | Data foundation: ingest job, database, views, saved metrics | **This release** |
+| 1 | Data foundation: ingest job, database, views, saved metrics | Done |
+| 3a | Dashboard: league-wide home (scores, headlines, leaders, injuries), player search and player pages | **This release** |
 | 2 | MCP server so Claude can answer questions from the data | Next |
-| 3 | Dashboard (league-wide home with news, player/team pages, explorer) | Planned |
+| 3b | Team pages and the play Explorer (tap any stat to see its plays) | Planned |
 | 4 | Compare, saved views, fantasy and betting views | Planned |
 
 ## How it works
@@ -22,11 +23,20 @@ nflverse GitHub releases ──► ingest (daily 6:00 ET, full Wed 6:30 ET)
                                 │  downloads only changed files (ETag cache)
                                 ▼
                         nfl.duckdb.building ──validate──► nfl.duckdb (atomic swap)
-                                                            │ read-only
-                                          ┌─────────────────┼─────────────────┐
-                                          ▼                 ▼                 ▼
-                                     API (Phase 3)    MCP (Phase 2)    dashboard (Phase 3)
+                                                            │ read-only mount
+                                                            ▼
+NFL news RSS feeds ──(every 15 min)──────────────────────► api (FastAPI) ◄── web (Caddy + React)
+                                                                               ▲
+                                              homelab Caddy, nfl.chihlas.com ──┘ (Tailscale only)
 ```
+
+- **ingest** is the only thing that writes the database.
+- **api** opens it read-only (the data folder is even mounted read-only) and
+  reconnects automatically after each morning's swap. It also keeps the latest NFL
+  headlines in memory: headline, source, time and link only, never article text.
+- **web** serves the dashboard and forwards `/api` to the API. It joins the homelab
+  reverse-proxy network, so the homelab Caddy can reach it as `nfl-web:8080`.
+- Scores and stats refresh once a day, early each morning, not live during games.
 
 - **Daily refresh:** re-checks current-season files and the all-seasons files,
   plus anything never downloaded. Unchanged files cost one tiny request.
@@ -76,7 +86,43 @@ memory. Disk: about 520 MB of cached Parquet plus about 760 MB for the database.
    docker compose exec ingest nfl status
    docker compose exec ingest nfl metric short_throw_misses \
        --player "Michael Penix Jr." --season 2026 --week-to 9
+   docker compose exec web wget -qO- http://api:8000/api/meta   # API answering?
    ```
+6. **Publish the dashboard at nfl.chihlas.com (Tailscale only).** The `web` container
+   joins the homelab Caddy's Docker network (`docker_homelab` by default; set
+   `HOMELAB_NETWORK` in `.env` if yours is named differently). Add a site to the
+   homelab Caddyfile, matching how your other internal sites are set up. A starting
+   point that only answers Tailscale addresses:
+   ```caddy
+   nfl.chihlas.com {
+       @tailnet remote_ip 100.64.0.0/10 fd7a:115c:a1e0::/48
+       handle @tailnet {
+           reverse_proxy nfl-web:8080
+       }
+       respond "Not available" 403
+   }
+   ```
+   Then reload Caddy, and point `nfl.chihlas.com` at docker-01's Tailscale address in
+   DNS if your wildcard record doesn't already cover it.
+7. **Check the news feeds** once it's running:
+   ```bash
+   docker compose exec web wget -qO- http://api:8000/api/news | head -c 400
+   ```
+   `sources_failed` lists any feed that didn't load. Feeds are set with
+   `NFL_NEWS_FEEDS` in `.env` as `Name|URL` pairs separated by commas. The defaults
+   are ESPN, CBS Sports, Yahoo Sports and Pro Football Talk.
+
+### Updating
+
+```bash
+cd /opt/docker/nfl-analytics
+git pull
+docker compose up -d --build
+```
+
+If a release changes the database views, the ingest container rebuilds the database
+from its cache on startup (about a minute, no downloads), and the API switches over
+automatically.
 
 ## Command reference
 
@@ -130,6 +176,8 @@ only as weekly Next Gen Stats averages.
 
 ```bash
 pip install -e ".[dev]"
+uvicorn --factory nfl_analytics.api.app:app --reload   # API on :8000 (needs NFL_DATA_DIR)
+cd web && npm install && npm run dev                     # dashboard on :5173, proxies /api
 pytest                 # unit tests on a synthetic fixture (seconds)
 pytest -m network      # Phase 1 gate on real data (downloads ~500 MB)
 ruff check src tests && ruff format --check src tests && mypy src

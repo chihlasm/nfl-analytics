@@ -1,0 +1,329 @@
+@import "tailwindcss";
+@import "@fontsource-variable/bricolage-grotesque/index.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+
+/*
+  NFL Analytics design tokens. Same design language as WePlan: one layout, two themes.
+    Vault  (dark, the default): near-black, layered slate cards with hairline borders.
+    Hearth (light):             warm sand paper, espresso ink, soft raised cards.
+
+  Colour has one job here: identifying a TEAM. Team colours appear only as small marks
+  next to a team's name (see TeamMark.tsx), never as decoration or for emphasis.
+  Status colours are for injury status only:
+    --color-alert  Out
+    --color-warn   Doubtful / Questionable
+  Everything else is neutral. Every text pairing passes WCAG AA.
+*/
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme static {
+  --font-display: "Bricolage Grotesque Variable", "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+
+  /* Hearth (light) */
+  --color-page: #f4efe9;
+  --color-surface: #fffdfa;
+  --color-sunken: #efe8e0;
+  --color-line: #e8dfd5;
+  --color-ink: #2a211c;
+  --color-muted: #6b5e55;
+  --color-faint: #6f635a;
+
+  --color-inverse: #2a211c;
+  --color-on-inverse: #fbf6f0;
+
+  --color-hero: #2a211c;
+  --color-on-hero: #fbf6f0;
+  --color-hero-raised: #3a2f28;
+  --color-hero-muted: #d9cec3;
+
+  --color-bar: #2a211c;
+  --color-bar-quiet: #d6ccc1;
+
+  --color-alert: #a3352b;
+  --color-alert-tint: #fbeae7;
+  --color-warn: #8a5a00;
+  --color-warn-tint: #f9ecd2;
+  --color-ok: #2a6e4d;
+  --color-focus: #3b5fc0;
+
+  --radius-control: 0.875rem;
+  --radius-tile: 1.25rem;
+  --radius-card: 1.75rem;
+
+  --shadow-card: 0 1px 0 #e8dfd5, 0 12px 32px -20px rgb(70 45 25 / 0.35);
+  --shadow-float: 0 12px 32px -12px rgb(70 45 25 / 0.45);
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --hero-border: transparent;
+    --card-border: transparent;
+    --nav-surface: var(--color-surface);
+  }
+
+  /* Vault (dark) */
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --color-page: #0a0e13;
+    --color-surface: #121922;
+    --color-sunken: #19222d;
+    --color-line: #243041;
+    --color-ink: #eef2f7;
+    --color-muted: #9aa7b8;
+    --color-faint: #8592a5;
+
+    --color-inverse: #eef2f7;
+    --color-on-inverse: #0a0e13;
+
+    --color-hero: #141c26;
+    --color-on-hero: #eef2f7;
+    --color-hero-raised: #1d2734;
+    --color-hero-muted: #a9b4c6;
+
+    --color-bar: #eef2f7;
+    --color-bar-quiet: #3a4a5f;
+
+    --color-alert: #ff8f8f;
+    --color-alert-tint: #341b1e;
+    --color-warn: #ffc56b;
+    --color-warn-tint: #33281a;
+    --color-ok: #6fd3a0;
+    --color-focus: #9ab0ff;
+
+    --shadow-card: none;
+    --shadow-float: 0 16px 40px -12px rgb(0 0 0 / 0.7);
+    --card-border: var(--color-line);
+    --hero-border: #2c394b;
+    --nav-surface: rgb(25 34 45 / 0.94);
+  }
+
+  html {
+    background: var(--color-page);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 100%;
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    min-height: 100dvh;
+    line-height: 1.5;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  /* Numbers always line up. */
+  .figures {
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* Surfaces. A card is the basic unit of every screen. */
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+  }
+  /* The one high-emphasis card per screen. */
+  .card-inverse {
+    background: var(--color-hero);
+    color: var(--color-on-hero);
+    border: 1px solid var(--hero-border);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+  }
+  /* A quieter block inside a card. */
+  .tile {
+    background: var(--color-sunken);
+    border-radius: var(--radius-tile);
+  }
+
+  .input {
+    width: 100%;
+    border: 1px solid var(--color-line);
+    background: var(--color-sunken);
+    color: var(--color-ink);
+    border-radius: var(--radius-control);
+    padding: 0.7rem 0.9rem;
+    font-size: 1rem; /* 16px stops iOS zooming into fields */
+    transition: border-color 120ms ease;
+  }
+  .input::placeholder {
+    color: var(--color-faint);
+  }
+  .input:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 1px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    padding: 0 1.15rem;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition:
+      background-color 120ms ease,
+      opacity 120ms ease,
+      transform 120ms ease;
+  }
+  .btn:not(:disabled):active {
+    transform: scale(0.98);
+  }
+  .btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .btn-quiet {
+    background: var(--color-surface);
+    color: var(--color-ink);
+    border: 1px solid var(--color-line);
+  }
+  .btn-quiet:not(:disabled):hover {
+    background: var(--color-sunken);
+  }
+  .btn-icon {
+    min-width: 2.75rem;
+    padding: 0;
+  }
+
+  /* Filter chips and segmented controls: aria-pressed / aria-selected carry the state. */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 2.5rem;
+    padding: 0 0.9rem;
+    border-radius: 999px;
+    border: 1px solid var(--color-line);
+    background: var(--color-surface);
+    color: var(--color-ink);
+    font-size: 0.875rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .chip[aria-pressed="true"],
+  .chip[aria-selected="true"] {
+    border-color: transparent;
+    background: var(--color-inverse);
+    color: var(--color-on-inverse);
+    font-weight: 600;
+  }
+  .segmented {
+    display: flex;
+    padding: 0.25rem;
+    border-radius: 999px;
+    background: var(--color-sunken);
+  }
+  .segmented > button {
+    flex: 1;
+    min-height: 2.25rem;
+    padding: 0 0.85rem;
+    border-radius: 999px;
+    color: var(--color-muted);
+    font-size: 0.875rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .segmented > button[aria-pressed="true"],
+  .segmented > button[aria-selected="true"] {
+    background: var(--color-inverse);
+    color: var(--color-on-inverse);
+    font-weight: 600;
+  }
+
+  /* A horizontally scrolling row (chips, week picker) that never shows a scrollbar. */
+  .scroll-row {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+    mask-image: linear-gradient(to right, black calc(100% - 2rem), transparent);
+  }
+  .scroll-row::-webkit-scrollbar {
+    display: none;
+  }
+  .scroll-row > * {
+    scroll-snap-align: start;
+  }
+
+  /* Data tables: game logs and career lines. Sticky first column on small screens. */
+  .data-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.875rem;
+  }
+  .data-table th {
+    position: sticky;
+    top: 0;
+    font-weight: 600;
+    color: var(--color-muted);
+    text-align: right;
+    padding: 0.5rem 0.6rem;
+    border-bottom: 1px solid var(--color-line);
+    white-space: nowrap;
+  }
+  .data-table td {
+    text-align: right;
+    padding: 0.55rem 0.6rem;
+    border-bottom: 1px solid var(--color-line);
+    white-space: nowrap;
+  }
+  .data-table tr:last-child td {
+    border-bottom: none;
+  }
+  .data-table th:first-child,
+  .data-table td:first-child {
+    position: sticky;
+    left: 0;
+    text-align: left;
+    background: var(--color-surface);
+  }
+  .data-table tfoot td {
+    font-weight: 600;
+    border-top: 1px solid var(--color-line);
+    border-bottom: none;
+  }
+}

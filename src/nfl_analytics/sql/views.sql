@@ -224,3 +224,25 @@ LEFT JOIN injury   USING (player_id, season, week)
 LEFT JOIN ngs_pass USING (player_id, season, week)
 LEFT JOIN ngs_rec  USING (player_id, season, week)
 LEFT JOIN ngs_rush USING (player_id, season, week);
+-- ;;
+
+-- ---------------------------------------------------------------------------
+-- injury_reports: one row per player per week on the official injury report
+-- (2009 on). Rows with no game status (practice-only listings) are kept, with
+-- report_status NULL, so practice participation is still visible.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE VIEW injury_reports AS
+SELECT
+    i.season,
+    i.season_type,
+    i.week,
+    i.team,
+    i.gsis_id                   AS player_id,
+    i.full_name                 AS player_name,
+    i.position,
+    i.report_status,
+    i.report_primary_injury     AS primary_injury,
+    i.report_secondary_injury   AS secondary_injury,
+    i.practice_status,
+    i.practice_primary_injury
+FROM raw_injuries AS i;

@@ -1,0 +1,41 @@
+# Inside the web container. TLS is terminated by the homelab's main Caddy, which
+# reverse-proxies nfl.chihlas.com to this container on port 8080.
+{
+	admin off
+	auto_https off
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+:8080 {
+	encode zstd gzip
+
+	header {
+		# No inline scripts or styles; React style props go through the CSSOM, which
+		# style-src doesn't restrict. Trusted Types with no policies blocks every
+		# string-to-HTML sink: headlines from news feeds can only ever render as text.
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; require-trusted-types-for 'script'; trusted-types 'none'"
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		X-Robots-Tag "noindex, nofollow"
+		-Server
+	}
+
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		root * /srv
+		@hashed path /assets/*
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		@shell path / /index.html /manifest.webmanifest
+		header @shell Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+}
