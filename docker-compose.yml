@@ -1,0 +1,30 @@
+# NFL Analytics stack for docker-01. Manage it in Dockge or with `docker compose`.
+#
+# Phase 1 runs only the ingest service. The api, mcp and web services are added
+# in later phases and will mount the same data volume READ-ONLY.
+
+name: nfl-analytics
+
+services:
+  ingest:
+    build:
+      context: .
+      dockerfile: services/ingest/Dockerfile
+    image: nfl-analytics-ingest:latest
+    container_name: nfl-ingest
+    restart: unless-stopped
+    init: true
+    user: "${PUID:-1000}:${PGID:-1000}"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NFL_DATA_DIR: /data
+    volumes:
+      - ${NFL_DATA_HOST_DIR:-./data}:/data
+    mem_limit: 8g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

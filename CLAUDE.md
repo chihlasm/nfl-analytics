@@ -1,0 +1,50 @@
+# CLAUDE.md: guide for Claude sessions working on this repo
+
+## Who and what
+- Owner: Michael (chihlasm). He is not a developer and relies on Claude for expert,
+  production-quality code. Explain decisions in plain language; never take a shortcut
+  just because it is easier.
+- Project: self-hosted NFL analytics on his Proxmox homelab (docker-01 VM, Docker +
+  Dockge, Caddy, Tailscale). Placeholder name "NFL Analytics", future URL nfl.chihlas.com.
+- GitHub is the source of truth for this repo (Gitea pull-mirrors from it).
+
+## Roadmap (each gate must pass before the next phase)
+1. Data foundation: done in this repo's first release. Gate: Penix 2026 Weeks 1-9
+   short-throw misses = 27 (`pytest -m network`).
+2. MCP server (Python) giving Claude read-only tools: describe_data, find_player,
+   find_team, player_splits, compare, run_metric, list_plays, latest_news, query_sql
+   (SELECT only, 5,000-row cap, 10 s timeout). Auth should match his WePlan MCP
+   connector. Gate: chat answers come from the database.
+3. Dashboard: frontend stack must MATCH his WePlan app (repo chihlasm/weplan): check
+   it before choosing anything. League-wide home (news feed, scores, leaders,
+   injuries and transactions), Player, Team, Explorer pages; tapping any stat shows its
+   plays; dark-first and phone-first. News: RSS headlines only (headline, source, time,
+   link; never article text), polled every 15 minutes, names matched to player/team IDs.
+4. Compare page, saved views, fantasy and betting views.
+
+## Architecture rules
+- `ingest` is the ONLY writer. It builds `nfl.duckdb.building`, validates, then
+  atomically replaces `nfl.duckdb`. Every other service opens the DB read-only and
+  should reopen it when the file changes (check mtime per request or on a timer).
+- Downstream code queries VIEWS (`plays`, `dropbacks`, `targets`, `games`, `players`,
+  `player_weeks`), never `raw_*` tables.
+- Metric logic lives ONLY in `sql/metrics.sql` (`metric_definitions`) and is executed
+  ONLY through `nfl_analytics.metrics`. Add a metric there, not in an endpoint.
+- User input is always a bound parameter. Never format user values into SQL.
+- SQL files separate statements with a line containing only `-- ;;`.
+
+## Conventions
+- Python 3.12, type hints everywhere, `mypy --strict` clean, ruff lint + format.
+- Tests use the synthetic cache in `tests/conftest.py`; extend it when adding views.
+  Each rule in a metric gets a case that counts and a case that does not.
+- Before committing: `ruff check src tests && ruff format --check src tests && mypy src && pytest`.
+- Work on a branch and open a PR; CI must be green.
+
+## Data facts worth knowing
+- nflverse releases: https://github.com/nflverse/nflverse-data/releases (file names in
+  `src/nfl_analytics/datasets.py`, verified 2026-11-16).
+- FTN charting starts 2022; snap counts 2012; injuries 2009; Next Gen Stats 2016
+  (single all-seasons files where week 0 = season totals).
+- Snap counts key players by PFR ID; map through `raw_players.pfr_id`.
+- No per-play "pressure" or separation in the free data.
+- FTN is CC-BY-SA 4.0: credit "FTN Data via nflverse" anywhere it is shown.
