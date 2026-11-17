@@ -61,12 +61,6 @@ class LeaderBoard(BaseModel):
     rows: list[LeaderRow]
 
 
-class Leaders(BaseModel):
-    season: int
-    through_week: int | None
-    boards: list[LeaderBoard]
-
-
 class InjuryRow(BaseModel):
     player_id: str | None
     player_name: str
@@ -261,3 +255,44 @@ class TeamProfile(BaseModel):
     leaders: list[LeaderBoard]
     injury_week: int | None
     injuries: list[InjuryRow]
+
+
+class StatInfo(BaseModel):
+    key: str
+    label: str
+    short: str
+    group: str  # passing | rushing | receiving | defense
+    decimals: int
+
+
+class StatCatalog(BaseModel):
+    stats: list[StatInfo]
+    position_groups: list[str]
+
+
+class ExplorerRow(BaseModel):
+    rank: int
+    player_id: str
+    name: str
+    position: str | None
+    position_group: str | None
+    team: str | None  # with a team filter: that team; otherwise their latest team
+    games: int
+    value: float  # season total
+    per_game: float
+
+
+class Explorer(BaseModel):
+    season: int
+    seasons: list[int]
+    season_type: str  # REG | POST | ALL
+    stat: StatInfo
+    sort: str  # total | per_game
+    order: str  # desc | asc
+    position_group: str | None
+    team: str | None
+    min_games: int
+    through_week: int | None
+    total: int  # players matching the filters, before paging
+    offset: int
+    rows: list[ExplorerRow]

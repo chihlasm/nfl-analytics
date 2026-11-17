@@ -17,8 +17,8 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 
 from nfl_analytics import __version__
+from nfl_analytics.api import explorer, queries, teams
 from nfl_analytics.api import models as m
-from nfl_analytics.api import queries, teams
 from nfl_analytics.api.db import Database, DatabaseUnavailable
 from nfl_analytics.api.news import NewsCache, news_from_env
 from nfl_analytics.config import Settings
@@ -92,9 +92,40 @@ def create_app(
     def get_games(cur: Cur, season: Season = None, week: WeekParam = None) -> m.Week:
         return queries.week_games(cur, season_or_current(cur, season), week)
 
-    @app.get("/api/leaders", response_model=m.Leaders)
-    def get_leaders(cur: Cur, season: Season = None, limit: Limit = 5) -> m.Leaders:
-        return queries.leaders(cur, season_or_current(cur, season), limit)
+    @app.get("/api/stats", response_model=m.StatCatalog)
+    def get_stats() -> m.StatCatalog:
+        return explorer.catalog()
+
+    @app.get("/api/explorer", response_model=m.Explorer)
+    def get_explorer(
+        cur: Cur,
+        stat: Annotated[str, Query(max_length=40)] = "passing_yards",
+        season: Season = None,
+        season_type: Annotated[explorer.SeasonType, Query()] = "REG",
+        position: Annotated[str | None, Query(max_length=4)] = None,
+        team: Annotated[str | None, Query(pattern=r"^[A-Z]{2,3}$")] = None,
+        min_games: Annotated[int, Query(ge=0, le=25)] = 0,
+        sort: Annotated[explorer.Sort, Query()] = "total",
+        order: Annotated[explorer.Order, Query()] = "desc",
+        limit: Annotated[int, Query(ge=1, le=explorer.MAX_PAGE)] = 50,
+        offset: Annotated[int, Query(ge=0, le=5000)] = 0,
+    ) -> m.Explorer:
+        result = explorer.explore(
+            cur,
+            stat_key=stat,
+            season=season_or_current(cur, season),
+            season_type=season_type,
+            position_group=position,
+            team=team,
+            min_games=min_games,
+            sort=sort,
+            order=order,
+            limit=limit,
+            offset=offset,
+        )
+        if result is None:
+            raise HTTPException(status_code=404, detail="No stat with that name.")
+        return result
 
     @app.get("/api/injuries", response_model=m.Injuries)
     def get_injuries(cur: Cur, season: Season = None) -> m.Injuries:

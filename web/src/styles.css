@@ -180,6 +180,8 @@
     overflow-x: auto;
     scrollbar-width: none;
     scroll-snap-type: x proximity;
+    /* Snap to the row's padding, not its edge, so the first item isn't nudged. */
+    scroll-padding-inline: 0.25rem;
   }
   .scroll-row::-webkit-scrollbar {
     display: none;
@@ -345,4 +347,55 @@
 }
 .team-link:hover {
   text-decoration-line: underline;
+}
+
+/* Arrow buttons on long chip rows: mouse and trackpad devices only (phones swipe). */
+.chip-arrow {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  display: none;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  color: #fff;
+  background: rgb(10 10 12 / 0.85);
+  border: 1px solid rgb(255 255 255 / 0.16);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 18px rgb(0 0 0 / 0.5);
+  z-index: 1;
+}
+.chip-arrow:hover {
+  border-color: var(--tb);
+  box-shadow: 0 0 18px -4px var(--tb);
+}
+@media (hover: hover) and (pointer: fine) {
+  .chip-arrow {
+    display: grid;
+  }
+}
+
+/* A dropdown dressed as a pill (components/ui.tsx Select). */
+.select-pill {
+  min-height: 2.75rem;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  background: rgb(0 0 0 / 0.45);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.select-pill:hover {
+  border-color: color-mix(in srgb, var(--tb) 60%, transparent);
+}
+.select-pill:focus-within {
+  border-color: var(--tb);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tb) 35%, transparent);
+}
+.select-pill select option,
+.select-pill select optgroup {
+  background: #111114;
+  color: #f3f4f6;
 }

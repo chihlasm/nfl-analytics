@@ -2,7 +2,8 @@
  * Small shared pieces for the team-adaptive design: panels, view switchers, rings
  * and the spinning hero frame. Colours come from the screen's --tp/--tb/--ts vars.
  */
-import { useId, type ReactNode } from "react";
+import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 /** A glass panel with a broadcast-style title and optional controls on the right. */
 export function Panel({
@@ -73,7 +74,12 @@ export function Segmented<K extends string>({
   );
 }
 
-/** A row of chips that picks one option (which stat, which status). */
+/**
+ * A row of chips that picks one option (which season, which status).
+ * Long rows scroll sideways: by swipe, trackpad, mouse wheel, or the arrow
+ * buttons that appear on devices with a mouse. Faded edges show there is more,
+ * and the chosen chip scrolls into view.
+ */
 export function ChipRow<K extends string>({
   options,
   value,
@@ -87,14 +93,178 @@ export function ChipRow<K extends string>({
   label: string;
   wrap?: boolean;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+
+  const measure = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const left = el.scrollLeft > 2;
+    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+    setEdges((e) => (e.left === left && e.right === right ? e : { left, right }));
+  }, []);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || wrap) return;
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    // A vertical mouse wheel scrolls the row sideways, but only while the row
+    // can still move that way, so the page scrolls normally at either end.
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      const max = el.scrollWidth - el.clientWidth;
+      if (max <= 0) return;
+      const next = el.scrollLeft + e.deltaY;
+      if ((e.deltaY < 0 && el.scrollLeft <= 0) || (e.deltaY > 0 && el.scrollLeft >= max)) return;
+      e.preventDefault();
+      el.scrollLeft = Math.max(0, Math.min(max, next));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      observer.disconnect();
+      el.removeEventListener("wheel", onWheel);
+    };
+  }, [measure, wrap, options.length]);
+
+  // Keep the chosen chip visible (an older season picked from a link, say).
+  useEffect(() => {
+    const el = ref.current;
+    const chip = el?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!el || !chip || wrap) return;
+    const box = el.getBoundingClientRect();
+    const c = chip.getBoundingClientRect();
+    // Only move when the chip is cut off; then centre it.
+    if (c.left < box.left || c.right > box.right) {
+      const target = el.scrollLeft + (c.left - box.left) - (box.width - c.width) / 2;
+      el.scrollTo({ left: Math.max(0, target), behavior: "instant" as ScrollBehavior });
+    }
+    measure();
+  }, [value, wrap, measure, options.length]);
+
+  const page = (dir: -1 | 1) => {
+    const el = ref.current;
+    if (!el) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: reduce ? "auto" : "smooth" });
+  };
+
+  if (wrap) {
+    return (
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label={label}>
+        {options.map((o) => (
+          <button key={o.key} type="button" className="pill" aria-pressed={o.key === value} onClick={() => onChange(o.key)}>
+            {o.label}
+            {o.extra}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  const mask =
+    edges.left && edges.right
+      ? "linear-gradient(90deg, transparent, #000 2.5rem, #000 calc(100% - 2.5rem), transparent)"
+      : edges.left
+        ? "linear-gradient(90deg, transparent, #000 2.5rem)"
+        : edges.right
+          ? "linear-gradient(90deg, #000 calc(100% - 2.5rem), transparent)"
+          : undefined;
+
   return (
-    <div className={wrap ? "flex flex-wrap gap-1.5" : "scroll-row -mx-1 px-1"} role="group" aria-label={label}>
-      {options.map((o) => (
-        <button key={o.key} type="button" className="pill" aria-pressed={o.key === value} onClick={() => onChange(o.key)}>
-          {o.label}
-          {o.extra}
+    <div className="chip-row relative min-w-0">
+      <div
+        ref={ref}
+        onScroll={measure}
+        className="scroll-row -mx-3 -my-3 scroll-px-3 px-3 py-3"
+        role="group"
+        aria-label={label}
+        style={mask ? { maskImage: mask, WebkitMaskImage: mask } : undefined}
+      >
+        {options.map((o) => (
+          <button key={o.key} type="button" className="pill shrink-0" aria-pressed={o.key === value} onClick={() => onChange(o.key)}>
+            {o.label}
+            {o.extra}
+          </button>
+        ))}
+      </div>
+      {edges.left && (
+        <button type="button" className="chip-arrow left-0" aria-label="Scroll left" tabIndex={-1} onClick={() => page(-1)}>
+          <ChevronLeft size={18} aria-hidden="true" />
         </button>
-      ))}
+      )}
+      {edges.right && (
+        <button type="button" className="chip-arrow right-0" aria-label="Scroll right" tabIndex={-1} onClick={() => page(1)}>
+          <ChevronRight size={18} aria-hidden="true" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+export interface SelectGroup<K extends string> {
+  label: string;
+  options: readonly Option<K>[];
+}
+
+/**
+ * A dropdown that looks like the rest of the app but is the browser's own
+ * select underneath: phones open their native picker, keyboards and screen
+ * readers work out of the box. `prefix` sits inside the button ("Stat").
+ */
+export function Select<K extends string>({
+  value,
+  onChange,
+  label,
+  groups,
+  options,
+  prefix,
+  className = "",
+}: {
+  value: K;
+  onChange: (key: K) => void;
+  label: string;
+  groups?: readonly SelectGroup<K>[];
+  options?: readonly Option<K>[];
+  prefix?: string;
+  className?: string;
+}) {
+  const id = useId();
+  const all = groups ? groups.flatMap((g) => g.options) : (options ?? []);
+  const current = all.find((o) => o.key === value)?.label ?? "";
+  return (
+    <div className={`select-pill relative inline-flex min-w-0 ${className}`}>
+      <label htmlFor={id} className="sr-only">
+        {label}
+      </label>
+      <span aria-hidden="true" className="pointer-events-none flex min-w-0 items-center gap-2 pl-4 pr-10">
+        {prefix && <span className="shrink-0 text-xs font-semibold text-muted">{prefix}</span>}
+        <span className="truncate font-bold text-white">{current}</span>
+      </span>
+      <ChevronDown size={17} aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--tb)]" />
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value as K)}
+        className="absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0"
+      >
+        {groups
+          ? groups.map((g) => (
+              <optgroup key={g.label} label={g.label}>
+                {g.options.map((o) => (
+                  <option key={o.key} value={o.key}>
+                    {o.label}
+                  </option>
+                ))}
+              </optgroup>
+            ))
+          : all.map((o) => (
+              <option key={o.key} value={o.key}>
+                {o.label}
+              </option>
+            ))}
+      </select>
     </div>
   );
 }

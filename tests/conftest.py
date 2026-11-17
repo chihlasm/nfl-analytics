@@ -18,6 +18,7 @@ SEASON = 2026
 PREV = 2025
 QB = "00-0039917"
 WR = "00-0037238"
+LB = "00-0034375"
 GAME = "2026_05_ATL_BAL"
 
 
@@ -124,7 +125,9 @@ def write_fixture_cache(cache: Path) -> None:
         FROM (VALUES
             ('{QB}', 'Michael Penix Jr.', 'QB', 'ATL', 'BAL', {SEASON}, 5, 'REG', 1),
             ('{QB}', 'Michael Penix Jr.', 'QB', 'ATL', 'CHI', {SEASON}, 6, 'REG', 2),
-            ('{WR}', 'Drake London', 'WR', 'ATL', 'BAL', {SEASON}, 5, 'REG', 3)
+            ('{WR}', 'Drake London', 'WR', 'ATL', 'BAL', {SEASON}, 5, 'REG', 3),
+            ('{QB}', 'Michael Penix Jr.', 'QB', 'ATL', 'DET', {SEASON}, 19, 'POST', 4),
+            ('{LB}', 'Roquan Smith', 'LB', 'BAL', 'ATL', {SEASON}, 5, 'REG', 1)
         ) t(player_id, player_display_name, position, team, opponent_team, season, week,
             season_type, w)
     """,
@@ -187,6 +190,7 @@ def write_fixture_cache(cache: Path) -> None:
         SELECT t.*, {null_player_cols} FROM (VALUES
             ('{QB}', 'Michael Penix Jr.', 'QB', 'QB', 'PeniMi00', {SEASON}),
             ('{WR}', 'Drake London', 'WR', 'WR', 'LondDr00', {SEASON}),
+            ('{LB}', 'Roquan Smith', 'LB', 'LB', NULL, {SEASON}),
             ('00-0000001', 'Michael Penix Sr.', 'QB', 'QB', NULL, 1999)
         ) t(gsis_id, display_name, position, position_group, pfr_id, last_season)
     """,
