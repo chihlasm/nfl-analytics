@@ -336,3 +336,13 @@
   transform: rotate(-8deg);
   mask-image: radial-gradient(circle at 60% 40%, #000 35%, transparent 72%);
 }
+
+/* Team names that open the team page: underline on hover/focus only, so dense screens stay calm. */
+.team-link {
+  border-radius: 6px;
+  text-decoration-color: color-mix(in srgb, var(--tb) 70%, transparent);
+  text-underline-offset: 4px;
+}
+.team-link:hover {
+  text-decoration-line: underline;
+}

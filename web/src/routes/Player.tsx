@@ -5,7 +5,7 @@ import { Link, useParams } from "react-router";
 import { Notice, Skeleton, errorText } from "../components/Notice";
 import { DepthBars, ThrowMap } from "../components/QbPanels";
 import { SeasonChart } from "../components/SeasonChart";
-import { TeamMark } from "../components/TeamMark";
+import { TeamLink, TeamMark } from "../components/TeamMark";
 import { ChipRow, HeroFrame, Panel, Ring, Segmented, Stat, type Option } from "../components/ui";
 import { ApiError, type MetricValue, type PlayerProfile, type StatColumn } from "../lib/api";
 import { height, num, pct } from "../lib/format";
@@ -166,7 +166,14 @@ function Hero({ profile }: { profile: PlayerProfile }) {
             <TeamMark abbr={abbr} size={16} />
             <span className="text-[0.8125rem] font-extrabold uppercase tracking-[0.12em] text-[var(--tb)]">
               {player.position}
-              {abbr && <> · {team(abbr)?.name ?? abbr}</>}
+              {abbr && (
+                <>
+                  {" · "}
+                  <TeamLink abbr={abbr} season={profile.season ?? undefined}>
+                    {team(abbr)?.name ?? abbr}
+                  </TeamLink>
+                </>
+              )}
             </span>
           </div>
           <h1 className="disp text-[3.75rem] leading-[0.86] text-white sm:text-[6rem]">
@@ -281,8 +288,11 @@ function Career({ profile }: { profile: PlayerProfile }) {
               <div className="flex items-baseline justify-between gap-2">
                 <span className="num text-[2rem] leading-none">{s.season}</span>
                 <span className="flex items-center gap-2 text-xs font-semibold text-muted">
-                  <TeamMark abbr={s.team} size={10} />
-                  {s.team} · {s.games} games
+                  <TeamLink abbr={s.team} season={s.season} className="inline-flex items-center gap-2">
+                    <TeamMark abbr={s.team} size={10} />
+                    {s.team}
+                  </TeamLink>
+                  · {s.games} games
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-2">

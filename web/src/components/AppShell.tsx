@@ -1,4 +1,4 @@
-import { House, Search, Settings as SettingsIcon, Users, type LucideIcon } from "lucide-react";
+import { House, Search, Settings as SettingsIcon, Shield, Users, type LucideIcon } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router";
 
@@ -11,6 +11,7 @@ interface Destination {
 
 const PLACES: Destination[] = [
   { to: "/", label: "Home", icon: House, end: true },
+  { to: "/teams", label: "Teams", icon: Shield },
   { to: "/players", label: "Players", icon: Users },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
 ];
@@ -118,13 +119,13 @@ export function AppShell() {
       {/* Phone tab bar: a floating glass pill above the home indicator */}
       <nav
         aria-label="Main"
-        className="fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-20 grid grid-cols-3 gap-1 rounded-full border border-white/10 bg-[rgba(14,14,16,0.86)] p-1.5 shadow-[0_18px_40px_-14px_rgba(0,0,0,0.9)] backdrop-blur-md md:hidden"
+        className="fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-20 grid grid-cols-4 gap-1 rounded-full border border-white/10 bg-[rgba(14,14,16,0.86)] p-1.5 shadow-[0_18px_40px_-14px_rgba(0,0,0,0.9)] backdrop-blur-md md:hidden"
       >
         {PLACES.map(({ to, label, icon: Icon, end }) => (
           <NavLink key={to} to={to} end={end} className="flex min-h-12 rounded-full text-muted hover:text-ink">
             {({ isActive }) => (
               <span
-                className="flex h-full w-full items-center justify-center gap-2 rounded-full"
+                className="flex h-full w-full flex-col items-center justify-center gap-0.5 rounded-full"
                 style={
                   isActive
                     ? {
@@ -135,8 +136,8 @@ export function AppShell() {
                     : undefined
                 }
               >
-                <Icon size={20} aria-hidden="true" />
-                <span className="text-sm font-bold">{label}</span>
+                <Icon size={19} aria-hidden="true" />
+                <span className="text-[0.6875rem] font-bold">{label}</span>
               </span>
             )}
           </NavLink>

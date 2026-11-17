@@ -87,7 +87,15 @@ def write_fixture_cache(cache: Path) -> None:
         receiver_player_id, '{QB}' AS passer_player_id, 'M.Penix' AS passer_player_name, epa,
         CASE WHEN pass_attempt = 1 AND sack = 0 AND incomplete_pass = 0 THEN 1.0 ELSE 0.0 END
             AS complete_pass,
-        CASE WHEN play_id % 2 = 0 THEN 'right' ELSE 'left' END AS pass_location
+        CASE WHEN play_id % 2 = 0 THEN 'right' ELSE 'left' END AS pass_location,
+        'ATL' AS posteam, 'BAL' AS defteam,
+        CASE WHEN qb_spike = 1 THEN 'qb_spike' ELSE 'pass' END AS play_type,
+        CASE WHEN sack = 1 THEN -7.0
+             WHEN pass_attempt = 1 AND incomplete_pass = 0 THEN coalesce(air_yards, 0) + 3
+             ELSE 0.0 END AS yards_gained,
+        CASE WHEN epa > 0 THEN 1.0 ELSE 0.0 END AS success,
+        CASE WHEN play_id = 2 THEN 1.0 ELSE 0.0 END AS interception,
+        0.0 AS fumble_lost, 0.0 AS two_point_attempt
     """
     _write(con, f"SELECT {pbp_cols} FROM fx", cache / "pbp" / f"play_by_play_{SEASON}.parquet")
     _write(

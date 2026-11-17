@@ -4,7 +4,7 @@
  */
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
-import { api, type Injuries, type Leaders, type Meta, type News, type PlayerProfile, type PlayerSummary, type Week } from "./api";
+import { api, type Injuries, type Leaders, type Meta, type News, type PlayerProfile, type PlayerSummary, type Standings, type TeamProfile, type Week } from "./api";
 
 const HOUR = 60 * 60 * 1000;
 
@@ -62,6 +62,25 @@ export function usePlayer(id: string | undefined, season: number | undefined) {
     queryKey: ["player", id, season],
     queryFn: () => api<PlayerProfile>(`/api/players/${encodeURIComponent(id ?? "")}`, { season }),
     enabled: Boolean(id),
+    staleTime: HOUR,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useStandings(season: number | undefined) {
+  return useQuery({
+    queryKey: ["standings", season],
+    queryFn: () => api<Standings>("/api/teams", { season }),
+    staleTime: HOUR,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useTeam(abbr: string | undefined, season: number | undefined) {
+  return useQuery({
+    queryKey: ["team", abbr, season],
+    queryFn: () => api<TeamProfile>(`/api/teams/${encodeURIComponent(abbr ?? "")}`, { season }),
+    enabled: Boolean(abbr),
     staleTime: HOUR,
     placeholderData: keepPreviousData,
   });

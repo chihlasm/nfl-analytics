@@ -119,5 +119,5 @@ def test_rebuild_keeps_previous_database_for_rollback(fixture_settings: Settings
 
 def test_sql_files_split_on_separator_lines_only() -> None:
     statements = load_sql("views.sql")
-    assert len(statements) == 8
+    assert len(statements) == 10
     assert all(s.lstrip().startswith(("--", "CREATE")) for s in statements)

@@ -264,3 +264,104 @@ SELECT
     team_color2        AS color_secondary,
     team_logo_espn     AS logo_url
 FROM raw_teams;
+-- ;;
+
+-- ---------------------------------------------------------------------------
+-- team_games: every game twice, once from each team's side.
+-- team_line is the betting spread from this team's point of view
+-- (negative = favoured), converted from nflverse's home-team spread_line.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE VIEW team_games AS
+SELECT
+    g.game_id,
+    g.season,
+    g.game_type,
+    g.week,
+    g.game_date,
+    g.kickoff_time_et,
+    s.team,
+    s.opponent,
+    s.is_home,
+    s.points_for,
+    s.points_against,
+    CASE
+        WHEN NOT g.is_final               THEN NULL
+        WHEN s.points_for > s.points_against THEN 'W'
+        WHEN s.points_for < s.points_against THEN 'L'
+        ELSE 'T'
+    END                                   AS result,
+    g.is_final,
+    coalesce(g.is_overtime, FALSE)        AS is_overtime,
+    coalesce(g.is_division_game, FALSE)   AS is_division_game,
+    CASE WHEN s.is_home THEN -g.spread_line ELSE g.spread_line END AS team_line,
+    g.total_line,
+    s.qb_name,
+    s.opponent_qb_name
+FROM games AS g
+CROSS JOIN LATERAL (
+    SELECT g.home_team AS team, g.away_team AS opponent, TRUE AS is_home,
+           g.home_score AS points_for, g.away_score AS points_against,
+           g.home_qb_name AS qb_name, g.away_qb_name AS opponent_qb_name
+    UNION ALL
+    SELECT g.away_team, g.home_team, FALSE,
+           g.away_score, g.home_score,
+           g.away_qb_name, g.home_qb_name
+) AS s;
+-- ;;
+
+-- ---------------------------------------------------------------------------
+-- team_weeks: per team per game, what its offense did and what its defense
+-- allowed. Scrimmage plays only (pass and run; sacks count as passes, as in
+-- nflverse). Kneels, spikes, two-point tries and penalties without a play
+-- are left out.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE VIEW team_weeks AS
+WITH scrimmage AS (
+    SELECT *
+    FROM plays
+    WHERE play_type IN ('pass', 'run')
+      AND coalesce(two_point_attempt, 0) = 0
+      AND posteam IS NOT NULL
+),
+side AS (
+    SELECT
+        season, season_type, week, game_id, posteam AS team, defteam AS opponent,
+        count(*)                                                  AS plays,
+        sum(yards_gained)                                         AS yards,
+        sum(epa)                                                  AS epa,
+        sum(success)                                              AS successes,
+        sum(yards_gained) FILTER (WHERE play_type = 'pass')       AS pass_yards,
+        sum(yards_gained) FILTER (WHERE play_type = 'run')        AS rush_yards,
+        sum(coalesce(interception, 0) + coalesce(fumble_lost, 0)) AS turnovers
+    FROM scrimmage
+    GROUP BY ALL
+),
+-- Every team in every game, even if only one side's plays are present.
+keys AS (
+    SELECT season, season_type, week, game_id, team, opponent FROM side
+    UNION
+    SELECT season, season_type, week, game_id, opponent, team FROM side
+)
+SELECT
+    k.season, k.season_type, k.week, k.game_id, k.team, k.opponent,
+    o.plays       AS off_plays,
+    o.yards       AS off_yards,
+    o.epa         AS off_epa,
+    o.successes   AS off_successes,
+    o.pass_yards  AS off_pass_yards,
+    o.rush_yards  AS off_rush_yards,
+    o.turnovers   AS giveaways,
+    d.plays       AS def_plays,
+    d.yards       AS def_yards,
+    d.epa         AS def_epa,
+    d.successes   AS def_successes,
+    d.pass_yards  AS def_pass_yards,
+    d.rush_yards  AS def_rush_yards,
+    d.turnovers   AS takeaways
+FROM keys AS k
+LEFT JOIN side AS o
+    ON  o.season = k.season AND o.season_type = k.season_type AND o.week = k.week
+    AND o.game_id = k.game_id AND o.team = k.team
+LEFT JOIN side AS d
+    ON  d.season = k.season AND d.season_type = k.season_type AND d.week = k.week
+    AND d.game_id = k.game_id AND d.team = k.opponent;

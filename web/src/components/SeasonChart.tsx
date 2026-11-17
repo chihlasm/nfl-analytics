@@ -3,7 +3,7 @@ import { useId, useState } from "react";
 import type { PlayerProfile, StatColumn, WeekLine } from "../lib/api";
 import { num, pct, weekLabel } from "../lib/format";
 import { useWidth } from "../lib/motion";
-import { TeamMark } from "./TeamMark";
+import { TeamLink, TeamMark } from "./TeamMark";
 import { ChipRow, Panel, Segmented, type Option } from "./ui";
 
 type View = "bars" | "line" | "table";
@@ -324,10 +324,10 @@ export function GameLog({ profile }: { profile: PlayerProfile }) {
                 )}
               </td>
               <td>
-                <span className="inline-flex items-center gap-1.5">
+                <TeamLink abbr={w.opponent} season={profile.season ?? undefined} className="inline-flex items-center gap-1.5">
                   <TeamMark abbr={w.opponent} size={10} />
                   {w.opponent}
-                </span>
+                </TeamLink>
               </td>
               <td>{w.snap_pct == null ? "–" : pct(w.snap_pct, 0)}</td>
               {cols.map((c) => (

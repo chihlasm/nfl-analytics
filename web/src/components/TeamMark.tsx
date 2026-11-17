@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { Link } from "react-router";
 import { teamDisc } from "../lib/palette";
 import { team } from "../lib/teams";
 
@@ -48,5 +49,29 @@ export function TeamTag({ abbr, className = "" }: { abbr: string | null | undefi
       <span aria-hidden={t ? "true" : undefined}>{abbr}</span>
       {t && <span className="sr-only">{t.name}</span>}
     </span>
+  );
+}
+
+/** A link to a team's page. Wrap the logo and name; never nest it inside another link. */
+export function TeamLink({
+  abbr,
+  children,
+  className = "",
+  season,
+  label,
+}: {
+  abbr: string | null | undefined;
+  children: ReactNode;
+  className?: string;
+  season?: number;
+  /** Accessible name, for links whose only content is a logo. */
+  label?: string;
+}) {
+  if (!abbr) return <span className={className}>{children}</span>;
+  const to = `/teams/${encodeURIComponent(abbr)}${season ? `?season=${season}` : ""}`;
+  return (
+    <Link to={to} className={`team-link ${className}`} aria-label={label}>
+      {children}
+    </Link>
   );
 }
