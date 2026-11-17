@@ -1,7 +1,6 @@
-import { House, Moon, Sun, Users, type LucideIcon } from "lucide-react";
-import { NavLink, Outlet, useLocation } from "react-router";
-
-import { setTheme, useTheme } from "../lib/theme";
+import { House, Search, Users, type LucideIcon } from "lucide-react";
+import { useId, useState, type FormEvent } from "react";
+import { NavLink, Outlet, useNavigate } from "react-router";
 
 interface Destination {
   to: string;
@@ -15,69 +14,56 @@ const PLACES: Destination[] = [
   { to: "/players", label: "Players", icon: Users },
 ];
 
-function Mark({ size = 28 }: { size?: number }) {
+function Logo({ size = 36 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
-      <rect width="64" height="64" rx="16" fill="var(--color-inverse)" />
-      <ellipse cx="32" cy="32" rx="21" ry="12.5" transform="rotate(-35 32 32)" fill="none" stroke="var(--color-on-inverse)" strokeWidth="4" />
-      <path d="M24.5 39.5 39.5 24.5M27 30l4 4m-.5-7.5 4 4m-10.5 3 4 4" stroke="var(--color-on-inverse)" strokeWidth="3" strokeLinecap="round" />
-    </svg>
+    <span
+      aria-hidden="true"
+      className="grid shrink-0 place-items-center rounded-[11px]"
+      style={{
+        width: size,
+        height: size,
+        background: "linear-gradient(135deg, var(--tb), var(--tp))",
+        boxShadow: "0 0 24px -2px color-mix(in srgb, var(--tb) 85%, transparent)",
+      }}
+    >
+      <svg width={size * 0.56} height={size * 0.56} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.3" strokeLinecap="round">
+        <ellipse cx="12" cy="12" rx="9" ry="5.2" transform="rotate(-35 12 12)" />
+        <path d="M9 15l6-6M10.5 11.5l2 2M12 10l2 2" />
+      </svg>
+    </span>
   );
 }
 
-function ThemeToggle({ className = "" }: { className?: string }) {
-  const theme = useTheme();
-  const next = theme === "dark" ? "light" : "dark";
-  const Icon = theme === "dark" ? Sun : Moon;
+/** Header search: jumps to the Players screen with the query filled in. */
+function HeaderSearch() {
+  const navigate = useNavigate();
+  const [q, setQ] = useState("");
+  const id = useId();
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const term = q.trim();
+    if (term) navigate(`/players?q=${encodeURIComponent(term)}`);
+  };
   return (
-    <button
-      type="button"
-      className={`btn btn-quiet btn-icon ${className}`}
-      onClick={() => setTheme(next)}
-      aria-label={`Switch to the ${next} theme`}
-      title={`Switch to the ${next} theme`}
-    >
-      <Icon size={18} aria-hidden="true" />
-    </button>
-  );
-}
-
-function RailLink({ to, label, icon: Icon, end }: Destination) {
-  return (
-    <NavLink
-      to={to}
-      end={end}
-      className={({ isActive }) =>
-        `flex min-h-11 items-center gap-3 rounded-full px-3.5 text-[0.95rem] transition-colors ${
-          isActive ? "bg-inverse font-semibold text-on-inverse" : "text-muted hover:bg-sunken hover:text-ink"
-        }`
-      }
-    >
-      <Icon size={18} aria-hidden="true" />
-      <span>{label}</span>
-    </NavLink>
-  );
-}
-
-function TabLink({ to, label, icon: Icon, end }: Destination) {
-  return (
-    <NavLink
-      to={to}
-      end={end}
-      aria-label={label}
-      className={({ isActive }) =>
-        `flex min-h-12 items-center justify-center gap-1.5 rounded-full text-sm font-semibold transition-colors ${
-          isActive ? "bg-inverse px-4 text-on-inverse" : "text-muted hover:text-ink"
-        }`
-      }
-    >
-      {({ isActive }) => (
-        <>
-          <Icon size={isActive ? 18 : 22} strokeWidth={isActive ? 2.1 : 1.9} aria-hidden="true" />
-          {isActive && <span aria-hidden="true">{label}</span>}
-        </>
-      )}
-    </NavLink>
+    <form role="search" onSubmit={submit} className="flex min-w-0 flex-[1_1_16rem]">
+      <label htmlFor={id} className="sr-only">
+        Search players
+      </label>
+      <div className="flex min-h-11 w-full items-center gap-2.5 rounded-full border border-white/10 bg-black/50 px-4">
+        <Search size={16} className="shrink-0 text-muted" aria-hidden="true" />
+        <input
+          id={id}
+          type="search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search any player since 1999"
+          autoComplete="off"
+          spellCheck={false}
+          enterKeyHint="search"
+          className="min-w-0 flex-1 bg-transparent text-[0.95rem] text-ink outline-none placeholder:text-faint"
+        />
+      </div>
+    </form>
   );
 }
 
@@ -90,55 +76,69 @@ function Credits({ className = "" }: { className?: string }) {
 }
 
 export function AppShell() {
-  const { pathname } = useLocation();
-  const playersActive = pathname.startsWith("/players");
-
   return (
-    <div className="min-h-dvh md:grid md:grid-cols-[15rem_1fr]">
+    <div className="page-bg min-h-dvh">
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-full focus:bg-surface focus:px-4 focus:py-2"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-full focus:bg-black focus:px-4 focus:py-2"
       >
         Skip to content
       </a>
 
-      {/* Desktop rail */}
-      <aside className="hidden md:sticky md:top-0 md:flex md:h-dvh md:flex-col md:gap-8 md:px-4 md:py-7">
-        <div className="flex items-center gap-2.5 px-2">
-          <Mark size={30} />
-          <span className="font-display text-lg font-semibold">NFL Analytics</span>
-        </div>
-        <nav aria-label="Main" className="flex flex-col gap-1">
-          {PLACES.map((d) => (
-            <RailLink key={d.to} {...d} />
-          ))}
-        </nav>
-        <div className="mt-auto flex flex-col gap-4 px-2">
-          <ThemeToggle className="self-start" />
-          <Credits />
-        </div>
-      </aside>
+      {/* Desktop and tablet header */}
+      <div className="mx-auto hidden max-w-[80rem] px-6 pt-5 md:block">
+        <header className="panel flex flex-wrap items-center gap-3.5 !rounded-full py-2.5 pl-4 pr-3">
+          <span className="flex items-center gap-2.5">
+            <Logo />
+            <span className="disp text-[1.4rem]">NFL Analytics</span>
+          </span>
+          <nav aria-label="Main" className="flex gap-1.5">
+            {PLACES.map(({ to, label, end }) => (
+              <NavLink key={to} to={to} end={end} className="pill">
+                {label}
+              </NavLink>
+            ))}
+          </nav>
+          <HeaderSearch />
+        </header>
+      </div>
 
-      <main id="main" className="mx-auto w-full max-w-[52rem] px-4 pb-32 pt-6 sm:px-6 md:pb-16 md:pt-10">
-        <div className="mb-6 flex items-center justify-between gap-2 md:hidden">
-          <div className="flex items-center gap-2">
-            <Mark size={26} />
-            <span className="font-display font-semibold">NFL Analytics</span>
-          </div>
-          <ThemeToggle />
-        </div>
+      {/* Phone top bar */}
+      <div className="flex items-center gap-2.5 px-4 pt-4 md:hidden">
+        <Logo size={32} />
+        <span className="disp text-[1.3rem]">NFL Analytics</span>
+      </div>
+
+      <main id="main" className="mx-auto w-full max-w-[80rem] px-4 pb-32 pt-5 sm:px-6 md:pb-16 md:pt-6">
         <Outlet />
-        <Credits className="mt-10 md:hidden" />
+        <Credits className="mt-10" />
       </main>
 
-      {/* Phone tab bar: a floating pill above the home indicator */}
+      {/* Phone tab bar: a floating glass pill above the home indicator */}
       <nav
         aria-label="Main"
-        className="fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-10 grid gap-1 rounded-full border border-[var(--card-border)] bg-[var(--nav-surface)] p-2 shadow-[var(--shadow-float)] backdrop-blur-md transition-[grid-template-columns] duration-200 md:hidden"
-        style={{ gridTemplateColumns: playersActive ? "1fr 1.6fr" : "1.6fr 1fr" }}
+        className="fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-20 grid grid-cols-2 gap-1 rounded-full border border-white/10 bg-[rgba(14,14,16,0.86)] p-1.5 shadow-[0_18px_40px_-14px_rgba(0,0,0,0.9)] backdrop-blur-md md:hidden"
       >
-        {PLACES.map((d) => (
-          <TabLink key={d.to} {...d} />
+        {PLACES.map(({ to, label, icon: Icon, end }) => (
+          <NavLink key={to} to={to} end={end} className="flex min-h-12 rounded-full text-muted hover:text-ink">
+            {({ isActive }) => (
+              <span
+                className="flex h-full w-full items-center justify-center gap-2 rounded-full"
+                style={
+                  isActive
+                    ? {
+                        background: "linear-gradient(135deg, var(--tb), var(--tp))",
+                        boxShadow: "0 0 22px -4px color-mix(in srgb, var(--tb) 85%, transparent)",
+                        color: "#fff",
+                      }
+                    : undefined
+                }
+              >
+                <Icon size={20} aria-hidden="true" />
+                <span className="text-sm font-bold">{label}</span>
+              </span>
+            )}
+          </NavLink>
         ))}
       </nav>
     </div>

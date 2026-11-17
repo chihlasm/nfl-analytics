@@ -161,6 +161,25 @@ export interface MetricValue {
   denominator: number | null;
 }
 
+export type Depth = "behind_los" | "short" | "intermediate" | "deep";
+export type Direction = "left" | "middle" | "right";
+
+export interface ThrowCell {
+  depth: Exclude<Depth, "behind_los">;
+  direction: Direction;
+  attempts: number;
+  completion_rate: number | null;
+  epa_per_attempt: number | null;
+}
+
+export interface DepthLine {
+  depth: Depth;
+  attempts: number;
+  completions: number;
+  /** Charted uncatchable incompletions; null before FTN charting (2022). */
+  misses: number | null;
+}
+
 export interface PlayerProfile {
   player: PlayerSummary;
   college: string | null;
@@ -175,6 +194,8 @@ export interface PlayerProfile {
   weeks: WeekLine[];
   career: SeasonLine[];
   metrics: MetricValue[];
+  throw_map: ThrowCell[];
+  depth: DepthLine[];
 }
 
 export interface NewsItem {

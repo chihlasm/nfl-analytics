@@ -27,14 +27,24 @@ Phase 3a (done, ahead of Phase 2 at Michael's request): `api` service
 injuries), player search and player pages. Next in 3b: Team pages, Explorer.
 
 ## Frontend (web/)
-- Same stack and design language as WePlan: React 19, react-router 8, TanStack Query 5,
-  Tailwind v4 tokens in `web/src/styles.css`, Vite, served by Caddy. Bricolage
-  Grotesque for headings and figures, IBM Plex Sans for text, `.figures` for numbers.
-  Build screens from `.card`, `.card-inverse` (one per screen), `.tile`, `.chip`,
-  `.segmented`, `.data-table`. Vault (dark) is the default theme, Hearth (light) optional.
-- Colour means TEAM only (`TeamMark`), plus alert/warn for injury status. No decorative colour.
+- Stack (same as WePlan): React 19, react-router 8, TanStack Query 5, Tailwind v4, Vite,
+  served by Caddy.
+- Design language: "team-adaptive", approved by Michael on 2026-11-16 (mockups:
+  https://claude.ai/artifact/1mwEbAuoXfbEkzuW65ov9x). It deliberately does NOT follow
+  WePlan's look. Dark only, modern and flashy, built to show the same data several ways.
+  - Every screen wears its team's colours: call `useScreenTeam(abbr)` (lib/palette.ts),
+    which sets `--tp` (primary), `--tb` (glow-safe bright), `--ts` (second), `--td`
+    (near-black tint). Screens with no team (Home, search) pass null for the ember
+    league accent. Components use only these variables; team data lives in lib/teams.ts.
+  - Negative values are white diagonal stripes (`.neg-stripes`), never a hue.
+  - Type: Barlow Condensed italic caps (`.disp`, `.num`) + Inter. Surfaces: `.panel`
+    glass, `HeroFrame` (spinning border, stripes, outlined watermark, light sweep).
+  - Every data panel offers more than one view via `Segmented` / `ChipRow`
+    (bars/line/table, cards/compact, ranked/bars, completion %/EPA/attempts).
+  - Motion: `rise`, `grow-up`, `ring-in`, count-up (`useCountUp`); all honour
+    prefers-reduced-motion.
 - TypeScript types in `web/src/lib/api.ts` mirror `api/models.py`; change both together.
-- Charts are hand-written SVG (`WeekBars`); no chart library.
+- Charts are hand-written SVG (`SeasonChart`, `QbPanels`, rings); no chart library.
 - Copy: plain, sentence case, active voice; errors say what happened and what to do.
 - Check: `cd web && npm run build` (typecheck + build).
 

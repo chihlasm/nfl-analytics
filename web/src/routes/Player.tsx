@@ -2,21 +2,23 @@ import { ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 
-import { Notice, QueryState, Skeleton, errorText } from "../components/Notice";
-import { Figure, PageHeader, Section } from "../components/Page";
-import { TeamTag } from "../components/TeamMark";
-import { WeekBars } from "../components/WeekBars";
+import { Notice, Skeleton, errorText } from "../components/Notice";
+import { DepthBars, ThrowMap } from "../components/QbPanels";
+import { SeasonChart } from "../components/SeasonChart";
+import { TeamMark } from "../components/TeamMark";
+import { ChipRow, HeroFrame, Panel, Ring, Segmented, Stat, type Option } from "../components/ui";
 import { ApiError, type MetricValue, type PlayerProfile, type StatColumn } from "../lib/api";
-import { height, num, pct, signed, weekLabel } from "../lib/format";
+import { height, num, pct } from "../lib/format";
+import { useCountUp } from "../lib/motion";
+import { useScreenTeam } from "../lib/palette";
 import { usePlayer } from "../lib/queries";
 import { team } from "../lib/teams";
 
-/** The season figures a player's page leads with, in order of importance. */
-const HEADLINE_STATS = [
+/** The season figures a player's hero leads with, in order of importance. */
+const HEADLINE = [
   "passing_yards",
   "passing_tds",
   "passing_interceptions",
-  "passing_epa",
   "rushing_yards",
   "rushing_tds",
   "receptions",
@@ -30,17 +32,37 @@ const HEADLINE_STATS = [
   "def_pass_defended",
 ];
 
+/**
+ * The stats to lead with. The API orders columns by the position's main stat group
+ * first (receiving for a WR, rushing for a RB), so keep that group order and rank
+ * within each group by HEADLINE.
+ */
+function headline(columns: StatColumn[], n = 4): StatColumn[] {
+  const groups = [...new Set(columns.map((c) => c.group))];
+  const rank = (k: string) => HEADLINE.indexOf(k);
+  return columns
+    .filter((c) => rank(c.key) >= 0)
+    .sort((a, b) => groups.indexOf(a.group) - groups.indexOf(b.group) || rank(a.key) - rank(b.key))
+    .slice(0, n);
+}
+
+/** The team a player was on in the season being shown (falls back to his current team). */
+function seasonTeam(p: PlayerProfile): string | null {
+  return p.weeks.find((w) => w.team)?.team ?? p.career.find((c) => c.season === p.season)?.team ?? p.player.team;
+}
+
 export function Player() {
   const { id } = useParams();
   const [season, setSeason] = useState<number | undefined>(undefined);
   const player = usePlayer(id, season);
   const p = player.data;
+  useScreenTeam(p ? seasonTeam(p) : null);
 
   if (player.isPending) {
     return (
-      <div className="flex flex-col gap-6">
-        <div className="tile h-20 animate-pulse" aria-hidden="true" />
-        <Skeleton rows={3} className="h-40" />
+      <div className="flex flex-col gap-5">
+        <div className="h-[22rem] animate-pulse rounded-[26px] bg-white/[0.05]" aria-hidden="true" />
+        <Skeleton rows={2} className="h-64" />
       </div>
     );
   }
@@ -54,22 +76,23 @@ export function Player() {
     );
   }
 
-  return (
-    <div className={`flex flex-col gap-6 ${player.isPlaceholderData ? "opacity-70" : ""}`}>
-      <BackLink />
-      <PageHeader title={p.player.display_name}>
-        <BioLine profile={p} />
-      </PageHeader>
+  const behindLos = p.depth.find((d) => d.depth === "behind_los")?.attempts;
 
-      {p.seasons.length > 1 && (
-        <div className="scroll-row -mx-1 px-1" role="group" aria-label="Season">
-          {p.seasons.map((s) => (
-            <button key={s} type="button" className="chip" aria-pressed={s === p.season} onClick={() => setSeason(s)}>
-              <span className="figures">{s}</span>
-            </button>
-          ))}
-        </div>
-      )}
+  return (
+    <div className={`flex flex-col gap-5 transition-opacity ${player.isPlaceholderData ? "opacity-60" : ""}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <BackLink />
+        {p.seasons.length > 1 && (
+          <ChipRow
+            options={p.seasons.map((s) => ({ key: String(s), label: String(s) }))}
+            value={String(p.season)}
+            onChange={(s) => setSeason(Number(s))}
+            label="Season"
+          />
+        )}
+      </div>
+
+      <Hero profile={p} />
 
       {p.columns.length === 0 ? (
         <Notice>We don't track box-score stats for this position yet.</Notice>
@@ -77,11 +100,15 @@ export function Player() {
         <Notice>No games on record for this player since 1999.</Notice>
       ) : (
         <>
-          <SeasonHero profile={p} />
-          {p.metrics.length > 0 && <Accuracy metrics={p.metrics} season={p.season} />}
-          <WeeklyChart profile={p} />
-          <GameLog profile={p} />
-          {p.career.length > 1 && <Career profile={p} />}
+          <SeasonChart key={`${p.player.player_id}-${p.season}`} profile={p} />
+          {p.throw_map.length > 0 && (
+            <div className="grid gap-5 lg:grid-cols-2">
+              <ThrowMap cells={p.throw_map} behindLos={behindLos} />
+              <DepthBars lines={p.depth} />
+            </div>
+          )}
+          {p.career.length > 0 && <Career profile={p} />}
+          {p.metrics.length > 0 && <p className="text-xs text-faint">Accuracy figures: charting by FTN Data via nflverse.</p>}
         </>
       )}
     </div>
@@ -90,243 +117,198 @@ export function Player() {
 
 function BackLink() {
   return (
-    <Link to="/players" className="inline-flex items-center gap-1.5 self-start text-sm font-medium text-muted hover:text-ink">
+    <Link to="/players" className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-muted hover:text-ink">
       <ArrowLeft size={16} aria-hidden="true" />
       Players
     </Link>
   );
 }
 
-function BioLine({ profile }: { profile: PlayerProfile }) {
+function splitName(name: string): [string, string] {
+  const parts = name.split(" ");
+  if (parts.length < 2) return [name, ""];
+  return [parts[0] ?? "", parts.slice(1).join(" ")];
+}
+
+function surname(name: string): string {
+  const words = name.replace(/\b(Jr\.?|Sr\.?|II|III|IV)$/i, "").trim().split(" ");
+  return (words.at(-1) ?? name).toUpperCase();
+}
+
+function Hero({ profile }: { profile: PlayerProfile }) {
   const { player } = profile;
-  const parts = [
+  const abbr = seasonTeam(profile);
+  const t = useCountUp(`${player.player_id}-${profile.season}`);
+  const [first, rest] = splitName(player.display_name);
+  const stats = headline(profile.columns);
+  const bio = [
     profile.years_of_experience != null ? `${profile.years_of_experience} yrs in the league` : null,
     profile.college,
     [height(profile.height_in), profile.weight_lb ? `${profile.weight_lb} lb` : null].filter(Boolean).join(", ") || null,
     profile.draft ? `Drafted ${profile.draft}` : null,
   ].filter(Boolean);
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="flex flex-wrap items-center gap-x-2 text-ink">
-        <span>{player.position}</span>
-        {player.team && (
-          <>
-            <span aria-hidden="true">·</span>
-            <TeamTag abbr={player.team} />
-            <span className="hidden sm:inline">{team(player.team)?.short}</span>
-          </>
-        )}
-      </span>
-      {parts.length > 0 && <span className="text-sm">{parts.join(" · ")}</span>}
-    </div>
-  );
-}
 
-function headline(columns: StatColumn[]): StatColumn[] {
-  const byKey = new Map(columns.map((c) => [c.key, c]));
-  return HEADLINE_STATS.map((k) => byKey.get(k)).filter((c): c is StatColumn => Boolean(c)).slice(0, 4);
-}
-
-function SeasonHero({ profile }: { profile: PlayerProfile }) {
-  const games = profile.weeks.filter((w) => w.season_type === "REG").length;
-  return (
-    <section aria-label={`${profile.season} regular season`} className="card-inverse flex flex-col gap-5 p-6">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-xl font-semibold">{profile.season} regular season</h2>
-        <span className="text-sm text-hero-muted">
-          <span className="figures">{games}</span> games
-        </span>
-      </div>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
-        {headline(profile.columns).map((c) => (
-          <Figure key={c.key} label={<span className="text-hero-muted">{c.label}</span>} value={num(profile.totals[c.key], c.decimals)} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function metricValue(m: MetricValue): string {
-  if (m.unit === "rate") return pct(m.value);
-  if (m.unit === "epa") return signed(m.value);
-  return num(m.value);
-}
-
-function Accuracy({ metrics, season }: { metrics: MetricValue[]; season: number }) {
-  const receiver = metrics.every((m) => m.name === "receiver_drops");
-  return (
-    <Section
-      title={receiver ? "Hands" : "Accuracy"}
-      description={
-        <>
-          From FTN's hand charting of every {season} play. The latest week fills in a day or two after the game.
-        </>
-      }
-    >
-      <div className="grid gap-3 sm:grid-cols-2">
-        {metrics.map((m) => (
-          <div key={m.name} className="tile flex flex-col gap-2 p-4">
-            <Figure label={m.label} value={metricValue(m)} />
-            <p className="text-sm text-muted">{m.description}</p>
-            {m.denominator != null && (
-              <p className="figures text-xs text-faint">
-                {num(m.numerator)} of {num(m.denominator)} plays
-              </p>
-            )}
-          </div>
-        ))}
-      </div>
-    </Section>
-  );
-}
-
-function WeeklyChart({ profile }: { profile: PlayerProfile }) {
-  const options = headline(profile.columns);
-  const [key, setKey] = useState<string | undefined>(undefined);
-  const stat = options.find((c) => c.key === key) ?? options[0];
-  if (!stat || profile.weeks.length === 0) return null;
-  const bars = profile.weeks.map((w) => ({
-    label: w.season_type === "POST" ? weekLabel(w.week, "POST", profile.season ?? undefined).split(" ")[0] ?? "P" : `W${w.week}`,
-    sub: w.opponent ?? undefined,
-    value: w.stats[stat.key] ?? null,
+  const cmp = profile.totals.completions;
+  const att = profile.totals.attempts;
+  const tiles: Array<{ label: string; value: string }> = stats.slice(0, att ? 3 : 4).map((c) => ({
+    label: c.label,
+    value: num((profile.totals[c.key] ?? 0) * t, c.decimals),
   }));
-  return (
-    <Section title="Week by week">
-      <div className="scroll-row -mx-1 px-1" role="group" aria-label="Stat to chart">
-        {options.map((c) => (
-          <button key={c.key} type="button" className="chip" aria-pressed={c.key === stat.key} onClick={() => setKey(c.key)}>
-            {c.label}
-          </button>
-        ))}
-      </div>
-      <WeekBars bars={bars} decimals={stat.decimals} label={`${stat.label} by week, ${profile.season}`} />
-    </Section>
-  );
-}
+  if (att) tiles.push({ label: "Completion", value: `${(((cmp ?? 0) / att) * 100 * t).toFixed(1)}%` });
 
-const GROUP_LABEL: Record<string, string> = {
-  passing: "Passing",
-  rushing: "Rushing",
-  receiving: "Receiving",
-  defense: "Defense",
-};
+  const rings = qbRings(profile.metrics);
 
-/** Header cells naming each stat group over its columns ("Passing", "Rushing"). */
-function GroupHeader({ columns, lead }: { columns: StatColumn[]; lead: number }) {
-  const spans: Array<{ group: string; span: number }> = [];
-  for (const c of columns) {
-    const last = spans.at(-1);
-    if (last && last.group === c.group) last.span += 1;
-    else spans.push({ group: c.group, span: 1 });
-  }
-  if (spans.length < 2) return null;
   return (
-    <tr>
-      <th colSpan={lead} aria-hidden="true" className="!border-b-0" />
-      {spans.map((s, i) => (
-        <th key={`${s.group}-${i}`} colSpan={s.span} scope="colgroup" className="!border-b-0 !text-left text-ink">
-          {GROUP_LABEL[s.group] ?? s.group}
-        </th>
-      ))}
-    </tr>
-  );
-}
-
-function GameLog({ profile }: { profile: PlayerProfile }) {
-  const cols = profile.columns;
-  return (
-    <Section title="Game log" description="Regular season totals at the bottom.">
-      <QueryState isPending={false} error={null} empty={profile.weeks.length === 0} emptyText="No games this season.">
-        <div className="-mx-5 overflow-x-auto px-5 sm:-mx-6 sm:px-6">
-          <table className="data-table figures">
-            <thead>
-              <GroupHeader columns={cols} lead={3} />
-              <tr>
-                <th scope="col">Week</th>
-                <th scope="col">Opp</th>
-                <th scope="col" title="Share of the team's snaps played">
-                  Snaps
-                </th>
-                {cols.map((c) => (
-                  <th key={c.key} scope="col" title={c.label}>
-                    {c.short}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {profile.weeks.map((w) => (
-                <tr key={`${w.season_type}-${w.week}`}>
-                  <td>
-                    {weekLabel(w.week, w.season_type, profile.season ?? undefined)}
-                    {w.injury_status && (
-                      <span className="ml-2 text-xs text-warn" title={`Injury report: ${w.injury_status}`}>
-                        {w.injury_status[0]}
-                      </span>
-                    )}
-                  </td>
-                  <td>
-                    <TeamTag abbr={w.opponent} className="justify-end" />
-                  </td>
-                  <td>{w.snap_pct == null ? "–" : pct(w.snap_pct, 0)}</td>
-                  {cols.map((c) => (
-                    <td key={c.key}>{num(w.stats[c.key], c.decimals)}</td>
-                  ))}
-                </tr>
+    <HeroFrame watermark={surname(player.display_name)}>
+      <div className={`grid gap-7 ${rings.length ? "lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]" : ""}`}>
+        <div className="flex flex-col gap-3.5">
+          <div className="flex items-center gap-2.5">
+            <TeamMark abbr={abbr} size={16} />
+            <span className="text-[0.8125rem] font-extrabold uppercase tracking-[0.12em] text-[var(--tb)]">
+              {player.position}
+              {abbr && <> · {team(abbr)?.name ?? abbr}</>}
+            </span>
+          </div>
+          <h1 className="disp text-[3.75rem] leading-[0.86] text-white sm:text-[6rem]">
+            {first}
+            <br />
+            <span
+              className="bg-clip-text text-transparent"
+              style={{
+                backgroundImage: "linear-gradient(90deg, #fff 10%, var(--tb) 55%, var(--ts))",
+                filter: "drop-shadow(0 0 22px color-mix(in srgb, var(--tb) 45%, transparent))",
+              }}
+            >
+              {rest}
+            </span>
+          </h1>
+          {bio.length > 0 && <p className="text-sm font-medium text-gray-300">{bio.join(" · ")}</p>}
+          {profile.season != null && tiles.length > 0 && (
+            <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-2.5">
+              {tiles.map((tile, i) => (
+                <Stat key={tile.label} value={tile.value} label={tile.label} accent={i === 0} />
               ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td>Season</td>
-                <td />
-                <td />
-                {cols.map((c) => (
-                  <td key={c.key}>{num(profile.totals[c.key], c.decimals)}</td>
-                ))}
-              </tr>
-            </tfoot>
-          </table>
+            </div>
+          )}
         </div>
-      </QueryState>
-    </Section>
+        {rings.length > 0 && (
+          <div className="grid grid-cols-3 gap-2 self-center sm:gap-3">
+            {rings.map((r, i) => (
+              <Ring key={r.label} {...r} delay={0.25 + i * 0.15} size={88} />
+            ))}
+          </div>
+        )}
+      </div>
+    </HeroFrame>
   );
 }
+
+/** The three QB accuracy rings, from the saved metrics (empty for other positions). */
+function qbRings(metrics: MetricValue[]) {
+  const m = new Map(metrics.map((x) => [x.name, x]));
+  const out: Array<{ share: number; value: string; label: string; sub?: string; from?: string; to?: string }> = [];
+  const catchable = m.get("catchable_ball_rate");
+  if (catchable?.value != null) {
+    out.push({
+      share: catchable.value,
+      value: pct(catchable.value),
+      label: "Catchable",
+      sub: catchable.denominator != null ? `${catchable.numerator} of ${catchable.denominator}` : undefined,
+    });
+  }
+  const misses = m.get("short_throw_misses");
+  const rate = m.get("short_throw_miss_rate");
+  if (misses?.value != null) {
+    out.push({
+      share: rate?.value ?? 0,
+      value: num(misses.value),
+      label: "Short misses",
+      sub: rate?.value != null ? `${pct(rate.value)} of short throws` : undefined,
+      from: "#ffffff",
+      to: "var(--tb)",
+    });
+  }
+  const epa = m.get("epa_per_dropback");
+  if (epa?.value != null) {
+    out.push({
+      share: (epa.value + 0.5) / 1,
+      value: `${epa.value > 0 ? "+" : epa.value < 0 ? "−" : ""}${Math.abs(epa.value).toFixed(2)}`,
+      label: "EPA / dropback",
+      sub: "Ring spans −0.5 to +0.5",
+      from: "var(--ts)",
+      to: "var(--tp)",
+    });
+  }
+  return out;
+}
+
+type CareerView = "total" | "game";
+const CAREER_VIEWS: readonly Option<CareerView>[] = [
+  { key: "total", label: "Totals" },
+  { key: "game", label: "Per game" },
+];
 
 function Career({ profile }: { profile: PlayerProfile }) {
-  const cols = profile.columns;
+  const [view, setView] = useState<CareerView>("total");
+  const cols = headline(profile.columns, 3);
+  const att = profile.columns.some((c) => c.key === "attempts");
   return (
-    <Section title="Career" description="Regular season, by year.">
-      <div className="-mx-5 overflow-x-auto px-5 sm:-mx-6 sm:px-6">
-        <table className="data-table figures">
-          <thead>
-            <GroupHeader columns={cols} lead={3} />
-            <tr>
-              <th scope="col">Season</th>
-              <th scope="col">Team</th>
-              <th scope="col">G</th>
-              {cols.map((c) => (
-                <th key={c.key} scope="col" title={c.label}>
-                  {c.short}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {profile.career.map((s) => (
-              <tr key={s.season}>
-                <td>{s.season}</td>
-                <td>
-                  <TeamTag abbr={s.team} className="justify-end" />
-                </td>
-                <td>{s.games}</td>
-                {cols.map((c) => (
-                  <td key={c.key}>{num(s.stats[c.key], c.decimals)}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Section>
+    <Panel
+      title="Career"
+      subtitle="Regular season, by year"
+      delay={0.26}
+      actions={<Segmented options={CAREER_VIEWS} value={view} onChange={setView} label="Career view" />}
+    >
+      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {profile.career.map((s) => {
+          const current = s.season === profile.season;
+          const cmpRate = att && s.stats.attempts ? (s.stats.completions ?? 0) / s.stats.attempts : null;
+          return (
+            <li
+              key={s.season}
+              className="flex flex-col gap-3 rounded-[18px] p-4"
+              style={
+                current
+                  ? {
+                      background:
+                        "linear-gradient(150deg, color-mix(in srgb, var(--tp) 55%, transparent), color-mix(in srgb, var(--td) 60%, transparent) 70%)",
+                      border: "1px solid color-mix(in srgb, var(--tb) 60%, transparent)",
+                      boxShadow: "0 0 34px -10px color-mix(in srgb, var(--tb) 80%, transparent)",
+                    }
+                  : { background: "rgba(255,255,255,0.03)", border: "1px solid var(--color-line)" }
+              }
+            >
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="num text-[2rem] leading-none">{s.season}</span>
+                <span className="flex items-center gap-2 text-xs font-semibold text-muted">
+                  <TeamMark abbr={s.team} size={10} />
+                  {s.team} · {s.games} games
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {cols.map((c) => {
+                  const v = s.stats[c.key];
+                  const shown = view === "game" && v != null && s.games ? num(v / s.games, c.key.endsWith("_tds") || c.key.includes("interceptions") ? 2 : 1) : num(v, c.decimals);
+                  return (
+                    <div key={c.key} className="flex flex-col">
+                      <span className="num text-[1.75rem] leading-none">{shown}</span>
+                      <span className="mt-1 text-[0.625rem] font-extrabold uppercase tracking-[0.06em] text-muted">{c.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {cmpRate != null && (
+                <>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.07]">
+                    <div className="h-full" style={{ width: `${cmpRate * 100}%`, background: "linear-gradient(90deg, var(--tp), var(--tb))" }} />
+                  </div>
+                  <span className="text-xs font-semibold text-muted">{pct(cmpRate)} completion</span>
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </Panel>
   );
 }

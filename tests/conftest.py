@@ -84,7 +84,10 @@ def write_fixture_cache(cache: Path) -> None:
         'REG' AS season_type, week, air_yards, qb_dropback::DOUBLE AS qb_dropback,
         pass_attempt::DOUBLE AS pass_attempt, sack::DOUBLE AS sack,
         qb_spike::DOUBLE AS qb_spike, incomplete_pass::DOUBLE AS incomplete_pass,
-        receiver_player_id, '{QB}' AS passer_player_id, 'M.Penix' AS passer_player_name, epa
+        receiver_player_id, '{QB}' AS passer_player_id, 'M.Penix' AS passer_player_name, epa,
+        CASE WHEN pass_attempt = 1 AND sack = 0 AND incomplete_pass = 0 THEN 1.0 ELSE 0.0 END
+            AS complete_pass,
+        CASE WHEN play_id % 2 = 0 THEN 'right' ELSE 'left' END AS pass_location
     """
     _write(con, f"SELECT {pbp_cols} FROM fx", cache / "pbp" / f"play_by_play_{SEASON}.parquet")
     _write(

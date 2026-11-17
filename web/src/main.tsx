@@ -8,10 +8,7 @@ import { createBrowserRouter, Link, RouterProvider } from "react-router";
 import { AppShell } from "./components/AppShell";
 import { Notice } from "./components/Notice";
 import { ApiError } from "./lib/api";
-import { initTheme } from "./lib/theme";
 import { Home } from "./routes/Home";
-
-initTheme();
 
 /** Home is in the first download; the other screens load the first time they're opened. */
 const screens = {
@@ -36,8 +33,8 @@ const queryClient = new QueryClient({
 
 function NotFound() {
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="text-[2rem] font-semibold">Page not found</h1>
+    <div className="flex flex-col gap-4 pt-2">
+      <h1 className="disp text-[4rem] leading-[0.84] text-white">Page not found</h1>
       <Notice>
         That address doesn't match anything here.{" "}
         <Link to="/" className="font-medium underline underline-offset-4">
