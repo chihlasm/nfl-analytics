@@ -42,10 +42,11 @@
 @layer base {
   :root {
     color-scheme: dark;
-    --tp: #ff4d1a;
-    --tb: #ff4d1a;
+    /* The NFL home look, so the first paint matches the default. */
+    --tp: #013369;
+    --tb: #f0283a;
     --ts: #ffffff;
-    --td: #120502;
+    --td: #000913;
   }
 
   html {

@@ -1,9 +1,30 @@
 import { useEffect, type CSSProperties } from "react";
 
+import { useHomeLook, type HomeLook } from "./settings";
 import { team } from "./teams";
 
-/** The league accent, for screens that belong to no team (Home, search). */
-export const LEAGUE = { primary: "#FF4D1A", bright: "#FF4D1A", secondary: "#FFFFFF" };
+interface Palette {
+  primary: string;
+  bright: string;
+  secondary: string;
+}
+
+/**
+ * Looks for screens that belong to no team (Home, search, Settings).
+ *   nfl    league navy for the washes, a glow-safe NFL red for accents, white
+ *   ember  the original hot orange accent
+ * Colours only: no league marks or logos are used.
+ */
+export const LEAGUE_LOOKS: Record<"nfl" | "ember", Palette & { name: string }> = {
+  nfl: { name: "NFL", primary: "#013369", bright: "#F0283A", secondary: "#FFFFFF" },
+  ember: { name: "Ember", primary: "#FF4D1A", bright: "#FF4D1A", secondary: "#FFFFFF" },
+};
+
+/** The palette for a no-team screen under the viewer's chosen home look. */
+export function lookPalette(look: HomeLook): Palette {
+  if (look === "nfl" || look === "ember") return LEAGUE_LOOKS[look];
+  return team(look) ?? LEAGUE_LOOKS.nfl;
+}
 
 /** "#a71930" -> "rgba(167,25,48,0.5)". */
 export function alpha(hex: string, a: number): string {
@@ -18,31 +39,31 @@ function darken(hex: string, amount: number): string {
   return `#${f((n >> 16) & 255)}${f((n >> 8) & 255)}${f(n & 255)}`;
 }
 
-/**
- * The CSS variables that theme a screen (see the notes at the top of styles.css).
- * Pass a team abbreviation, or nothing for the league accent.
- */
-export function themeVars(abbr?: string | null): CSSProperties {
-  const t = team(abbr) ?? LEAGUE;
+/** The CSS variables that theme a screen (see the notes at the top of styles.css). */
+export function themeVars(p: Palette): CSSProperties {
   return {
-    "--tp": t.primary,
-    "--tb": t.bright,
-    "--ts": t.secondary,
-    "--td": darken(t.primary, 0.82),
+    "--tp": p.primary,
+    "--tb": p.bright,
+    "--ts": p.secondary,
+    "--td": darken(p.primary, 0.82),
   } as CSSProperties;
 }
 
 /**
- * Theme the whole app (shell, page background, controls, browser chrome) in a
- * team's colours while this screen is shown. Pass null for the league accent.
+ * Theme the whole app (shell, page background, controls, browser chrome) while this
+ * screen is shown: in a team's colours, or with null in the viewer's home look
+ * (Settings › Home look; the NFL look by default).
  */
 export function useScreenTeam(abbr: string | null | undefined) {
+  const look = useHomeLook();
+  const t = team(abbr);
+  const palette = t ?? lookPalette(look);
   useEffect(() => {
     const root = document.documentElement;
-    const vars = themeVars(abbr) as Record<string, string>;
+    const vars = themeVars(palette) as Record<string, string>;
     for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", vars["--td"] ?? "#050505");
-  }, [abbr]);
+  }, [palette.primary, palette.bright, palette.secondary]);
 }
 
 /** The two-tone team disc used beside every team name. */
