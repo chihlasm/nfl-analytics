@@ -269,7 +269,8 @@ export interface TeamRank {
   teams: number;
   league_avg: number | null;
   decimals: number;
-  unit: "" | "%" | "yds" | "pts";
+  unit: StatUnit;
+  has_plays: boolean;
 }
 
 export interface TeamProfile {
@@ -286,8 +287,8 @@ export interface TeamProfile {
   injuries: InjuryRow[];
 }
 
-export type StatGroup = "passing" | "rushing" | "receiving" | "defense" | "advanced";
-export type StatUnit = "count" | "rate" | "epa" | "yards";
+export type StatGroup = "passing" | "rushing" | "receiving" | "defense" | "advanced" | "offense";
+export type StatUnit = "count" | "rate" | "epa" | "yards" | "points";
 
 export interface StatInfo {
   key: string;
@@ -295,8 +296,8 @@ export interface StatInfo {
   short: string;
   group: StatGroup;
   decimals: number;
-  /** stat = box score; metric = an advanced stat from sql/metrics.sql. */
-  kind: "stat" | "metric";
+  /** stat = box score; metric = an advanced stat (sql/metrics.sql); team = a team stat. */
+  kind: "stat" | "metric" | "team";
   /** rate values are 0-1 and shown as a percentage. */
   unit: StatUnit;
   description: string | null;
@@ -305,11 +306,16 @@ export interface StatInfo {
   per_game: boolean;
   /** Data credit to show wherever it appears (FTN charting). */
   credit: string | null;
+  /** Sets which end of a ranking is "best". */
+  higher_is_better: boolean;
+  /** Whether tapping it can list plays (points come from scores, so no). */
+  has_plays: boolean;
 }
 
 export interface StatCatalog {
   stats: StatInfo[];
   position_groups: string[];
+  team_stats: StatInfo[];
 }
 
 export type SeasonType = "REG" | "POST" | "ALL";
@@ -396,7 +402,10 @@ export type PlaySort = "time" | "value";
 
 export interface PlayList {
   stat: StatInfo;
-  player: PlayerRef;
+  /** Null for a team stat. */
+  player: PlayerRef | null;
+  /** The team, for a team stat. */
+  subject_team: string | null;
   season: number;
   season_type: SeasonType;
   week: number | null;
@@ -411,4 +420,28 @@ export interface PlayList {
   weeks: PlayWeek[];
   offset: number;
   rows: PlayRow[];
+}
+
+export interface TeamExplorerRow {
+  rank: number;
+  team: string;
+  name: string;
+  conference: string | null;
+  division: string | null;
+  games: number;
+  value: number;
+  /** Plays behind it (null for points, which come from scores). */
+  plays: number | null;
+}
+
+export interface TeamExplorer {
+  season: number;
+  seasons: number[];
+  season_type: SeasonType;
+  stat: StatInfo;
+  order: "best" | "worst";
+  conference: "AFC" | "NFC" | null;
+  through_week: number | null;
+  league_avg: number | null;
+  rows: TeamExplorerRow[];
 }

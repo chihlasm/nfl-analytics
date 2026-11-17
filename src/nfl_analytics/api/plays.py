@@ -14,6 +14,7 @@ import duckdb
 
 from nfl_analytics import metrics
 from nfl_analytics.api import models as m
+from nfl_analytics.api import team_stats
 from nfl_analytics.api.explorer import metric_info, stat_info
 from nfl_analytics.api.queries import _rows
 from nfl_analytics.api.stats import STATS_BY_KEY, Stat
@@ -360,4 +361,109 @@ def play_list(
         counted_only=counted_only,
         limit=limit,
         offset=offset,
+    )
+
+
+def team_play_list(
+    cur: duckdb.DuckDBPyConnection,
+    *,
+    key: str,
+    team: str,
+    season: int,
+    season_type: SeasonType = "REG",
+    week: int | None = None,
+    sort: Sort = "time",
+    counted_only: bool = False,
+    limit: int = 50,
+    offset: int = 0,
+) -> m.PlayList | None:
+    """The plays behind a team stat. None for unknown stats and for points (scores)."""
+    stat = team_stats.TEAM_STATS_BY_KEY.get(key)
+    if stat is None or stat.from_scores:
+        return None
+    limit = max(1, min(limit, MAX_PAGE))
+    defense = stat.side == "defense"
+    rule = team_stats.play_rule(stat)  # trusted constants; $t is bound
+    is_rate = stat.unit == "rate"
+    where = ["season = $s"]
+    params: dict[str, object] = {"s": season, "t": team}
+    if season_type != "ALL":
+        where.append("season_type = $st")
+        params["st"] = season_type
+    scope = " AND ".join(where)
+
+    by_week = cur.execute(
+        f"SELECT season_type, week, count(*), sum({stat.value}) FROM plays "
+        f"WHERE {scope} AND {rule} GROUP BY ALL ORDER BY season_type DESC, week",
+        params,
+    ).fetchall()
+    weeks = [
+        m.PlayWeek(
+            season_type=r[0],
+            week=int(r[1]),
+            plays=int(r[2]),
+            value=float(r[3]) / int(r[2]) if stat.combine == "mean" else float(r[3]),
+        )
+        for r in by_week
+    ]
+    in_scope = [w for w in weeks if week is None or w.week == week]
+    plays_total = sum(w.plays for w in in_scope)
+    counted_total = (
+        int(
+            cur.execute(
+                f"SELECT count(*) FROM plays WHERE {scope} AND {rule} AND ({stat.value}) > 0"
+                + (" AND week = $w" if week is not None else ""),
+                {**params, **({"w": week} if week is not None else {})},
+            ).fetchone()[0]  # type: ignore[index]
+        )
+        if is_rate
+        else plays_total
+    )
+    figure = team_stats.league_values(
+        cur, stat, season, season_type=season_type, week=week, team=team
+    )
+
+    page_params = {**params, "n": limit, "o": offset}
+    extra = ""
+    if week is not None:
+        extra += " AND week = $w"
+        page_params["w"] = week
+    if counted_only and is_rate:
+        extra += f" AND ({stat.value}) > 0"
+    order = (
+        "value DESC NULLS LAST, season_type DESC, week, play_id"
+        if sort == "value"
+        else "season_type DESC, week, game_id, play_id"
+    )
+    rows = _rows(
+        cur,
+        f"SELECT {_SELECT}, ({stat.value})::DOUBLE AS value FROM plays "
+        f"WHERE {scope}{extra} AND {rule} ORDER BY {order} LIMIT $n OFFSET $o",
+        page_params,
+    )
+    return m.PlayList(
+        stat=team_stats.info(stat),
+        player=None,
+        subject_team=team,
+        season=season,
+        season_type=season_type,
+        week=week,
+        team=team,
+        sort=sort,
+        counted_only=counted_only and is_rate,
+        value=figure[0].value if figure else None,
+        official=None,
+        plays=counted_total if counted_only and is_rate else plays_total,
+        counted=counted_total,
+        weeks=weeks,
+        offset=offset,
+        rows=[
+            _row(
+                r,
+                defense=defense,
+                value=_float(r["value"]),
+                counted=(r["value"] or 0) > 0 if is_rate else True,
+            )
+            for r in rows
+        ],
     )

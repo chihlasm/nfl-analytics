@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from dataclasses import dataclass
 from typing import Any
 
 import duckdb
 
 from nfl_analytics.api import models as m
+from nfl_analytics.api import team_stats
 from nfl_analytics.api.queries import INJURY_ORDER, SKILL_POSITIONS, _rows
 from nfl_analytics.api.stats import STATS_BY_KEY
 
@@ -31,32 +31,6 @@ TEAM_LEADER_CATEGORIES: tuple[str, ...] = (
     "def_interceptions",
 )
 TEAM_LEADER_LIMIT = 3
-
-
-@dataclass(frozen=True, slots=True)
-class RankStat:
-    key: str
-    label: str
-    side: str
-    higher_is_better: bool
-    decimals: int
-    unit: str
-
-
-RANK_STATS: tuple[RankStat, ...] = (
-    RankStat("points_per_game", "Points per game", "offense", True, 1, "pts"),
-    RankStat("yards_per_play", "Yards per play", "offense", True, 2, "yds"),
-    RankStat("epa_per_play", "EPA per play", "offense", True, 3, ""),
-    RankStat("success_rate", "Success rate", "offense", True, 1, "%"),
-    RankStat("pass_yards_per_game", "Passing yards per game", "offense", True, 1, "yds"),
-    RankStat("rush_yards_per_game", "Rushing yards per game", "offense", True, 1, "yds"),
-    RankStat("giveaways", "Giveaways", "offense", False, 0, ""),
-    RankStat("points_allowed_per_game", "Points allowed per game", "defense", False, 1, "pts"),
-    RankStat("yards_per_play_allowed", "Yards per play allowed", "defense", False, 2, "yds"),
-    RankStat("epa_per_play_allowed", "EPA per play allowed", "defense", False, 3, ""),
-    RankStat("success_rate_allowed", "Success rate allowed", "defense", False, 1, "%"),
-    RankStat("takeaways", "Takeaways", "defense", True, 0, ""),
-)
 
 
 def valid_team(team: str) -> bool:
@@ -155,80 +129,25 @@ def standings(cur: duckdb.DuckDBPyConnection, season: int) -> m.Standings:
     )
 
 
-def _league_ranks(cur: duckdb.DuckDBPyConnection, season: int) -> dict[str, dict[str, float]]:
-    """stat key -> team -> value, regular season, every team that played."""
-    points = _rows(
-        cur,
-        "SELECT team, avg(points_for) AS pf, avg(points_against) AS pa FROM team_games "
-        "WHERE season = $s AND game_type = 'REG' AND is_final GROUP BY team",
-        {"s": season},
-    )
-    eff = _rows(
-        cur,
-        "SELECT team, count(*) AS games, "
-        "sum(off_yards) / nullif(sum(off_plays), 0) AS ypp, "
-        "sum(off_epa) / nullif(sum(off_plays), 0) AS epa, "
-        "sum(off_successes) / nullif(sum(off_plays), 0) AS sr, "
-        "sum(off_pass_yards) / count(*) AS pass_ypg, "
-        "sum(off_rush_yards) / count(*) AS rush_ypg, "
-        "sum(giveaways) AS giveaways, "
-        "sum(def_yards) / nullif(sum(def_plays), 0) AS ypp_a, "
-        "sum(def_epa) / nullif(sum(def_plays), 0) AS epa_a, "
-        "sum(def_successes) / nullif(sum(def_plays), 0) AS sr_a, "
-        "sum(takeaways) AS takeaways "
-        "FROM team_weeks WHERE season = $s AND season_type = 'REG' GROUP BY team",
-        {"s": season},
-    )
-    values: dict[str, dict[str, float]] = defaultdict(dict)
-    for r in points:
-        if r["pf"] is not None:
-            values["points_per_game"][r["team"]] = float(r["pf"])
-            values["points_allowed_per_game"][r["team"]] = float(r["pa"])
-    mapping = {
-        "yards_per_play": "ypp",
-        "epa_per_play": "epa",
-        "success_rate": "sr",
-        "pass_yards_per_game": "pass_ypg",
-        "rush_yards_per_game": "rush_ypg",
-        "giveaways": "giveaways",
-        "yards_per_play_allowed": "ypp_a",
-        "epa_per_play_allowed": "epa_a",
-        "success_rate_allowed": "sr_a",
-        "takeaways": "takeaways",
-    }
-    for r in eff:
-        for key, col in mapping.items():
-            if r[col] is not None:
-                v = float(r[col])
-                values[key][r["team"]] = v * 100 if key.startswith("success") else v
-    return values
-
-
 def _ranks(cur: duckdb.DuckDBPyConnection, season: int, team: str) -> list[m.TeamRank]:
-    league = _league_ranks(cur, season)
+    """This team's place in the league on every team stat (regular season)."""
     out: list[m.TeamRank] = []
-    for stat in RANK_STATS:
-        by_team = league.get(stat.key, {})
-        value = by_team.get(team)
-        rank = None
-        if value is not None:
-            # Standard competition ranking: ties share the better rank.
-            better = sum(
-                1 for v in by_team.values() if (v > value if stat.higher_is_better else v < value)
-            )
-            rank = better + 1
-        avg = sum(by_team.values()) / len(by_team) if by_team else None
+    for stat in team_stats.TEAM_STATS:
+        values = team_stats.league_values(cur, stat, season)
+        mine = next(((r, v) for r, v in team_stats.ranked(values, stat) if v.team == team), None)
+        avg = sum(v.value for v in values) / len(values) if values else None
         out.append(
             m.TeamRank(
                 key=stat.key,
                 label=stat.label,
                 side=stat.side,
-                value=value,
-                rank=rank,
-                teams=len(by_team),
+                value=mine[1].value if mine else None,
+                rank=mine[0] if mine else None,
+                teams=len(values),
                 league_avg=avg,
                 decimals=stat.decimals,
                 unit=stat.unit,
+                has_plays=not stat.from_scores,
             )
         )
     return out

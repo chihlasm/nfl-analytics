@@ -7,6 +7,7 @@ export const GROUP_LABELS: Record<StatGroup, string> = {
   receiving: "Receiving",
   defense: "Defense",
   advanced: "Advanced",
+  offense: "Offense",
 };
 
 /** A stat's value as people read it: 13.8% for rates, +0.214 for EPA, 1,207 for counts. */
@@ -22,8 +23,8 @@ export function statValue(stat: Pick<StatInfo, "unit" | "decimals">, value: numb
 }
 
 /** The catalog as dropdown groups: Passing, Rushing, Receiving, Defense. */
-export function statGroups(stats: readonly StatInfo[]): SelectGroup<string>[] {
-  return (Object.keys(GROUP_LABELS) as StatGroup[])
+export function statGroups(stats: readonly StatInfo[], order: readonly StatGroup[] = Object.keys(GROUP_LABELS) as StatGroup[]): SelectGroup<string>[] {
+  return order
     .map((g) => ({
       label: GROUP_LABELS[g],
       options: stats.filter((s) => s.group === g).map((s) => ({ key: s.key, label: s.label })),

@@ -6,10 +6,10 @@ import { QueryState } from "../components/Notice";
 import { StatTap } from "../components/StatTap";
 import { TeamLink, TeamMark } from "../components/TeamMark";
 import { ChipRow, Panel, Segmented, Select, type Option } from "../components/ui";
-import type { ExplorerOrder, ExplorerRow, ExplorerSort, SeasonType, StatInfo } from "../lib/api";
+import type { ExplorerOrder, ExplorerRow, ExplorerSort, SeasonType, StatInfo, TeamExplorer, TeamExplorerRow } from "../lib/api";
 import type { PlaysTarget } from "../lib/plays";
 import { alpha, useScreenTeam } from "../lib/palette";
-import { useExplorer, useStatCatalog, type ExplorerFilters } from "../lib/queries";
+import { useExplorer, useStatCatalog, useTeamExplorer, type ExplorerFilters, type TeamExplorerFilters } from "../lib/queries";
 import { statGroups, statValue } from "../lib/stats";
 import { TEAMS, team } from "../lib/teams";
 
@@ -67,7 +67,46 @@ const DEFAULTS: Record<string, string> = { season_type: "REG", sort: "total", or
 
 /* --------------------------------------------------------------- screen */
 
+type Subject = "players" | "teams";
+const SUBJECTS: readonly Option<Subject>[] = [
+  { key: "players", label: "Players" },
+  { key: "teams", label: "Teams" },
+];
+
 export function Explorer() {
+  const [params, setParams] = useSearchParams();
+  const subject: Subject = params.get("subject") === "teams" ? "teams" : "players";
+  // Switching subject starts fresh: player and team filters don't mean the same thing.
+  const switchTo = (next: Subject) =>
+    setParams(() => {
+      const kept = new URLSearchParams();
+      const season = params.get("season");
+      if (season) kept.set("season", season);
+      if (next === "teams") kept.set("subject", "teams");
+      return kept;
+    });
+
+  return (
+    <div className="flex flex-col gap-5">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-1">
+          <h1 className="disp text-[3.5rem] leading-[0.86] sm:text-[4.5rem]">
+            Stat <span className="text-[var(--tb)]">explorer</span>
+          </h1>
+          <p className="text-sm text-muted">
+            {subject === "players"
+              ? "Rank every player on any stat. Filter by season, team or position, then tap a number to see its plays."
+              : "Rank all 32 teams on any team stat, offense or defense. Tap a number to see its plays."}
+          </p>
+        </div>
+        <Segmented options={SUBJECTS} value={subject} onChange={switchTo} label="Rank players or teams" />
+      </header>
+      {subject === "players" ? <PlayerExplorer /> : <TeamExplorerView />}
+    </div>
+  );
+}
+
+function PlayerExplorer() {
   const [params, setParams] = useSearchParams();
   const filters = useMemo(() => readFilters(params), [params]);
   useScreenTeam(filters.team ?? null);
@@ -106,14 +145,7 @@ export function Explorer() {
     );
 
   return (
-    <div className="flex flex-col gap-5">
-      <header className="flex flex-col gap-1">
-        <h1 className="disp text-[3.5rem] leading-[0.86] sm:text-[4.5rem]">
-          Stat <span className="text-[var(--tb)]">explorer</span>
-        </h1>
-        <p className="text-sm text-muted">Rank every player on any stat. Filter by season, team or position, then tap a player to open their page.</p>
-      </header>
-
+    <>
       <Panel delay={0.04}>
         <div className="flex flex-col gap-3">
           {/* Phones: stat and team full width, season and games side by side. */}
@@ -210,7 +242,7 @@ export function Explorer() {
           ) : null
         }
       />
-    </div>
+    </>
   );
 }
 
@@ -523,6 +555,256 @@ function ResultsCards({ rows, ctx }: { rows: ExplorerRow[]; ctx: Ctx }) {
               </StatTap>
               {secondary && <span className="text-xs text-muted">{secondary}</span>}
             </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/* ----------------------------------------------------------------- teams */
+
+const CONFERENCE_OPTIONS: readonly Option<"" | "AFC" | "NFC">[] = [
+  { key: "", label: "All teams" },
+  { key: "AFC", label: "AFC" },
+  { key: "NFC", label: "NFC" },
+];
+const TEAM_ORDERS: readonly Option<"best" | "worst">[] = [
+  { key: "best", label: "Best first" },
+  { key: "worst", label: "Worst first" },
+];
+const DEFAULT_TEAM_STAT = "epa_per_play";
+
+function TeamExplorerView() {
+  useScreenTeam(null);
+  const [params, setParams] = useSearchParams();
+  const catalog = useStatCatalog();
+  const season = Number(params.get("season"));
+  const conference = params.get("conference");
+  const filters: TeamExplorerFilters = {
+    stat: params.get("stat") || DEFAULT_TEAM_STAT,
+    season: Number.isInteger(season) && season > 1990 ? season : undefined,
+    season_type: pick(params.get("season_type"), SEASON_TYPES, "REG"),
+    conference: conference === "AFC" || conference === "NFC" ? conference : undefined,
+    order: params.get("order") === "worst" ? "worst" : "best",
+  };
+  const query = useTeamExplorer(filters);
+  const data = query.data;
+  const [view, setView] = useState<View>("table");
+
+  const set = (key: string, value: string | undefined) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        const fallback: Record<string, string> = { season_type: "REG", order: "best" };
+        if (!value || fallback[key] === value) next.delete(key);
+        else next.set(key, value);
+        return next;
+      },
+      { replace: true },
+    );
+
+  const stat = data?.stat;
+  const bits = [
+    data && `${data.season} ${seasonText(data.season_type)}`,
+    data?.season_type === "REG" && data.through_week ? `through week ${data.through_week}` : null,
+    data?.conference,
+  ].filter(Boolean);
+
+  return (
+    <>
+      <Panel delay={0.04}>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          {catalog.data && (
+            <Select
+              value={filters.stat}
+              onChange={(v) => set("stat", v)}
+              label="Team stat"
+              prefix="Stat"
+              groups={statGroups(catalog.data.team_stats, ["offense", "defense"])}
+              className="col-span-2 sm:w-96"
+            />
+          )}
+          <Select
+            value={String(data?.season ?? filters.season ?? "")}
+            onChange={(v) => set("season", v)}
+            label="Season"
+            prefix="Season"
+            options={(data?.seasons ?? (filters.season ? [filters.season] : [])).map((x) => ({ key: String(x), label: String(x) }))}
+            className="sm:w-44"
+          />
+          <Select
+            value={filters.conference ?? ""}
+            onChange={(v) => set("conference", v || undefined)}
+            label="Conference"
+            options={CONFERENCE_OPTIONS}
+            className="sm:w-56"
+          />
+        </div>
+        <div className="self-start">
+          <Segmented options={SEASON_TYPES} value={filters.season_type ?? "REG"} onChange={(v) => set("season_type", v)} label="Season type" />
+        </div>
+      </Panel>
+
+      <Panel
+        title={stat?.label ?? "Results"}
+        subtitle={`${data?.rows.length ?? 0} teams${bits.length ? ` · ${bits.join(" · ")}` : ""}`}
+        delay={0.08}
+        actions={<Segmented options={VIEWS} value={view} onChange={setView} label="Results view" />}
+      >
+        {stat?.description && <p className="-mt-2 max-w-3xl text-sm text-gray-300">{stat.description}</p>}
+        <div className="flex flex-wrap items-center gap-2">
+          <Segmented options={TEAM_ORDERS} value={filters.order ?? "best"} onChange={(v) => set("order", v)} label="Order" />
+          <span className="text-xs text-muted">
+            {stat?.has_plays === false ? "Points come from final scores, so they have no plays list." : "Tap a number to see the plays behind it."}
+          </span>
+        </div>
+        <QueryState isPending={query.isPending} error={query.error} empty={!data?.rows.length} emptyText="No games on record for that season." rows={8}>
+          {data && stat && (
+            <div className={`transition-opacity ${query.isPlaceholderData ? "opacity-60" : ""}`}>
+              <TeamResults data={data} stat={stat} view={view} />
+            </div>
+          )}
+        </QueryState>
+        {data?.league_avg != null && stat && <p className="text-xs text-faint">League average: {statValue(stat, data.league_avg)}. Ranks are across the whole league.</p>}
+      </Panel>
+    </>
+  );
+}
+
+function teamTarget(stat: StatInfo, data: TeamExplorer, abbr: string): PlaysTarget | null {
+  if (!stat.has_plays) return null;
+  return { subject: "team", team: abbr, stat: stat.key, season: data.season, season_type: data.season_type };
+}
+
+function TeamResults({ data, stat, view }: { data: TeamExplorer; stat: StatInfo; view: View }) {
+  const values = data.rows.map((r) => r.value);
+  const lo = Math.min(...values);
+  const hi = Math.max(...values);
+  const avg = data.league_avg ?? 0;
+  const label = (r: TeamExplorerRow) => `${r.name}, ${stat.label}: see the plays`;
+  const signedScale = stat.unit === "epa"; // EPA bars grow from zero both ways
+
+  if (view === "table") {
+    return (
+      <div className="-mx-4 overflow-x-auto sm:mx-0">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th scope="col">Rank</th>
+              <th scope="col" className="!text-left">
+                Team
+              </th>
+              <th scope="col">{stat.short}</th>
+              <th scope="col">vs average</th>
+              <th scope="col">Games</th>
+              {stat.has_plays && <th scope="col">Plays</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {data.rows.map((r) => {
+              const delta = r.value - avg;
+              const good = stat.higher_is_better ? delta > 0 : delta < 0;
+              return (
+                <tr key={r.team}>
+                  <td className="num text-[1.05rem] text-muted">{r.rank}</td>
+                  <td className="!text-left">
+                    <TeamLink abbr={r.team} season={data.season} className="inline-flex items-center gap-2 font-bold">
+                      <TeamMark abbr={r.team} size={13} />
+                      <span className="sm:hidden">{team(r.team)?.short ?? r.name}</span>
+                      <span className="hidden sm:inline">{r.name}</span>
+                    </TeamLink>
+                  </td>
+                  <td className="font-bold text-white">
+                    <StatTap target={teamTarget(stat, data, r.team)} label={label(r)}>
+                      {statValue(stat, r.value)}
+                    </StatTap>
+                  </td>
+                  <td className={good ? "font-semibold text-[var(--tb)]" : "text-gray-300"}>
+                    {stat.unit === "rate" ? `${delta >= 0 ? "+" : "−"}${Math.abs(delta * 100).toFixed(1)} pts` : `${delta >= 0 ? "+" : "−"}${Math.abs(delta).toFixed(Math.max(1, stat.decimals))}`}
+                  </td>
+                  <td>{r.games}</td>
+                  {stat.has_plays && <td className="text-muted">{r.plays}</td>}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  if (view === "bars") {
+    // Bars start at zero for EPA (negatives in white stripes); other stats start from the
+    // league's lowest value so the differences between teams are visible.
+    const floor = signedScale ? 0 : lo - (hi - lo) * 0.15;
+    const span = signedScale ? Math.max(Math.abs(lo), Math.abs(hi), 1e-9) : Math.max(hi - floor, 1e-9);
+    return (
+      <ol className="flex flex-col gap-2.5">
+        {data.rows.map((r, i) => {
+          const t = team(r.team);
+          const share = signedScale ? Math.abs(r.value) / span : (r.value - floor) / span;
+          const negative = signedScale && r.value < 0;
+          return (
+            <li key={r.team} className="grid grid-cols-[1.75rem_minmax(0,8.5rem)_minmax(0,1fr)_4.5rem] items-center gap-2.5 sm:grid-cols-[2rem_12rem_minmax(0,1fr)_5.5rem]">
+              <span className="num text-right text-[1.05rem] text-faint">{r.rank}</span>
+              <TeamLink abbr={r.team} season={data.season} className="flex min-w-0 items-center gap-2 font-bold">
+                <TeamMark abbr={r.team} size={13} />
+                <span className="truncate">{t?.short ?? r.name}</span>
+              </TeamLink>
+              <span className="h-3.5 overflow-hidden rounded-md bg-white/[0.06]" aria-hidden="true">
+                <span
+                  className={`grow-right block h-full rounded-md ${negative ? "neg-stripes" : ""}`}
+                  style={{
+                    width: `${Math.max(2, share * 100)}%`,
+                    animationDelay: `${Math.min(i, 32) * 0.02}s`,
+                    ...(negative
+                      ? {}
+                      : {
+                          background: `linear-gradient(90deg, ${t?.primary ?? "#374151"}, ${t?.bright ?? "#9ca3af"})`,
+                          boxShadow: i < 3 ? `0 0 14px -2px ${alpha(t?.bright ?? "#9ca3af", 0.8)}` : undefined,
+                        }),
+                  }}
+                />
+              </span>
+              <StatTap target={teamTarget(stat, data, r.team)} label={label(r)} className="num justify-self-end text-[1.35rem] leading-none">
+                {statValue(stat, r.value)}
+              </StatTap>
+            </li>
+          );
+        })}
+      </ol>
+    );
+  }
+
+  return (
+    <ol className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-8">
+      {data.rows.map((r) => {
+        const t = team(r.team);
+        const b = t?.bright ?? "#9ca3af";
+        const podium = r.rank <= 3;
+        return (
+          <li
+            key={r.team}
+            className="relative flex flex-col gap-2 overflow-hidden rounded-[16px] p-3"
+            style={{
+              background: `linear-gradient(150deg, ${alpha(t?.primary ?? "#374151", podium ? 0.8 : 0.4)}, #0b0b0c 75%)`,
+              border: `1px solid ${podium ? alpha(b, 0.6) : "rgba(255,255,255,0.08)"}`,
+              boxShadow: podium ? `0 0 28px -10px ${alpha(b, 0.9)}` : undefined,
+            }}
+          >
+            <span className="flex items-center justify-between">
+              <span className="num text-[1.4rem] leading-none" style={{ color: podium ? b : "#6b7280" }}>
+                {r.rank}
+              </span>
+              <TeamMark abbr={r.team} size={20} />
+            </span>
+            <TeamLink abbr={r.team} season={data.season} className="truncate text-sm font-bold text-white">
+              {t?.short ?? r.name}
+            </TeamLink>
+            <StatTap target={teamTarget(stat, data, r.team)} label={label(r)} className="num self-start text-[1.8rem] leading-none text-white">
+              {statValue(stat, r.value)}
+            </StatTap>
           </li>
         );
       })}
