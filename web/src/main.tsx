@@ -14,6 +14,7 @@ import { Home } from "./routes/Home";
 const screens = {
   players: () => import("./routes/Players").then((m) => ({ Component: m.Players })),
   player: () => import("./routes/Player").then((m) => ({ Component: m.Player })),
+  settings: () => import("./routes/Settings").then((m) => ({ Component: m.Settings })),
 };
 
 function warmScreens() {
@@ -53,6 +54,7 @@ const router = createBrowserRouter([
       { index: true, element: <Home /> },
       { path: "players", lazy: screens.players },
       { path: "players/:id", lazy: screens.player },
+      { path: "settings", lazy: screens.settings },
       { path: "*", element: <NotFound /> },
     ],
   },

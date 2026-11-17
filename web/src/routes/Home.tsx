@@ -32,7 +32,7 @@ export function Home() {
           <div
             aria-hidden="true"
             className="disp pointer-events-none absolute -top-2 right-0 text-[9rem] text-transparent sm:-top-6 sm:text-[14rem]"
-            style={{ WebkitTextStroke: `2px ${alpha("#FF4D1A", 0.18)}` }}
+            style={{ WebkitTextStroke: "2px color-mix(in srgb, var(--tb) 20%, transparent)" }}
           >
             {shown.week}
           </div>
@@ -145,7 +145,7 @@ function Facts({ games }: { games: Game[] }) {
       unit: `/ ${games.length}`,
       note: next ? `Next: ${next.away.team} at ${next.home.team}, ${kickoff(next.kickoff_time_et)}` : "Week complete",
       teams: next ? [next.away.team, next.home.team] : [],
-      glow: "#FF4D1A",
+      glow: "var(--tb)",
     },
     high && { label: "Highest scoring", value: String(total(high)), unit: "pts", note: winnerFirst(high), teams: [high.away.team, high.home.team], glow: bright(high.home.team) },
     close && { label: "Closest finish", value: String(margin(close)), unit: "pts", note: winnerFirst(close), teams: [close.away.team, close.home.team], glow: bright(close.home.team) },
@@ -160,7 +160,7 @@ function Facts({ games }: { games: Game[] }) {
           className="panel rise flex flex-col gap-1.5 overflow-hidden p-4"
           style={{
             animationDelay: `${0.04 * i}s`,
-            background: `radial-gradient(220px 140px at 100% 0%, ${alpha(f.glow, 0.32)}, transparent 70%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.015))`,
+            background: `radial-gradient(220px 140px at 100% 0%, color-mix(in srgb, ${f.glow} 32%, transparent), transparent 70%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.015))`,
           }}
         >
           <span className="text-[0.6875rem] font-extrabold uppercase tracking-[0.12em] text-muted">{f.label}</span>
@@ -168,11 +168,15 @@ function Facts({ games }: { games: Game[] }) {
             {f.value}
             <span className="text-[1.25rem] text-muted"> {f.unit}</span>
           </span>
-          <span className="flex items-center gap-1.5 text-[0.8125rem] font-medium text-gray-300">
-            {f.teams.map((t) => (
-              <TeamMark key={t} abbr={t} size={9} />
-            ))}
-            <span className="truncate">{f.note}</span>
+          <span className="flex items-start gap-1.5 text-[0.8125rem] font-medium leading-snug text-gray-300">
+            {f.teams.length > 0 && (
+              <span className="mt-1 flex shrink-0 gap-1">
+                {f.teams.map((t) => (
+                  <TeamMark key={t} abbr={t} size={9} />
+                ))}
+              </span>
+            )}
+            <span className="min-w-0">{f.note}</span>
           </span>
         </li>
       ))}
