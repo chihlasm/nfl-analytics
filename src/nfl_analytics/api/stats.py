@@ -58,16 +58,6 @@ GROUPS_BY_POSITION: dict[str, tuple[StatGroup, ...]] = {
     "DB": ("defense",),
 }
 
-# League leader boards shown on the home page, in order.
-LEADER_CATEGORIES: tuple[str, ...] = (
-    "passing_yards",
-    "passing_tds",
-    "rushing_yards",
-    "receiving_yards",
-    "receptions",
-    "def_sacks",
-)
-
 
 def groups_for(position_group: str | None) -> tuple[StatGroup, ...]:
     return GROUPS_BY_POSITION.get(position_group or "", ())

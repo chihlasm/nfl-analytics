@@ -19,6 +19,10 @@ data/
 # Web
 web/node_modules/
 web/dist/
+# Compiler output if `tsc` is ever run without --noEmit (sources are .ts/.tsx only)
+web/src/**/*.js
+web/vite.config.js
+web/*.tsbuildinfo
 
 # Environment
 .env

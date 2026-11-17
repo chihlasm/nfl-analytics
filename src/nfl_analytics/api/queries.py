@@ -9,8 +9,6 @@ import duckdb
 
 from nfl_analytics.api import models as m
 from nfl_analytics.api.stats import (
-    LEADER_CATEGORIES,
-    STATS_BY_KEY,
     groups_for,
     stats_for,
 )
@@ -111,36 +109,6 @@ def week_games(cur: duckdb.DuckDBPyConnection, season: int, week: int | None) ->
         for r in rows
     ]
     return m.Week(season=season, week=week, weeks=weeks, games=games)
-
-
-def leaders(cur: duckdb.DuckDBPyConnection, season: int, limit: int) -> m.Leaders:
-    boards: list[m.LeaderBoard] = []
-    for key in LEADER_CATEGORIES:
-        stat = STATS_BY_KEY[key]
-        # `stat.key` is a trusted constant from stats.py, never visitor input.
-        rows = _rows(
-            cur,
-            f"SELECT player_id, any_value(player_display_name) AS name, "
-            f"any_value(position) AS position, arg_max(team, week) AS team, "
-            f"sum({stat.key}) AS value, count(*) AS games "
-            f"FROM player_weeks WHERE season = $s AND season_type = 'REG' "
-            f"GROUP BY player_id HAVING sum({stat.key}) > 0 "
-            f"ORDER BY value DESC, name LIMIT $n",
-            {"s": season, "n": limit},
-        )
-        boards.append(
-            m.LeaderBoard(
-                key=key,
-                label=stat.label,
-                decimals=stat.decimals,
-                rows=[m.LeaderRow(**r) for r in rows],
-            )
-        )
-    through = cur.execute(
-        "SELECT max(week) FROM player_weeks WHERE season = $s AND season_type = 'REG'",
-        {"s": season},
-    ).fetchone()
-    return m.Leaders(season=season, through_week=through[0] if through else None, boards=boards)
 
 
 def injuries(cur: duckdb.DuckDBPyConnection, season: int) -> m.Injuries:

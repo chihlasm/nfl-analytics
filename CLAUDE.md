@@ -28,7 +28,11 @@ injuries), player search and player pages.
 Phase 3b so far: Teams (standings by division/conference/league) and Team pages (schedule
 with byes, game-by-game margins, league ranks, division table, injuries, leaders).
 `TeamLink` makes team names open their page; never nest it inside another link.
-Next in 3b: Explorer.
+Explorer v1 (`/explorer`, `GET /api/explorer`, catalog at `GET /api/stats`): rank every
+player on any catalog stat with season, season type, team, position group and min-games
+filters, total or per-game, highest or lowest, paged 50 at a time. All filters live in
+the URL. Home leaders use it (stat dropdown + "See all" link into the Explorer).
+Next in 3b: tap a stat to see its plays; Explorer for metrics and team stats.
 
 ## Frontend (web/)
 - Stack (same as WePlan): React 19, react-router 8, TanStack Query 5, Tailwind v4, Vite,
@@ -45,6 +49,9 @@ Next in 3b: Explorer.
     glass, `HeroFrame` (spinning border, stripes, outlined watermark, light sweep).
   - Every data panel offers more than one view via `Segmented` / `ChipRow`
     (bars/line/table, cards/compact, ranked/bars, completion %/EPA/attempts).
+  - Long option lists (stats, teams, seasons in filters) use `Select`, a styled native
+    select (phones get their own picker). `ChipRow` scrolls sideways with faded edges,
+    mouse-wheel support and arrow buttons on mouse devices; keep it for short lists.
   - Motion: `rise`, `grow-up`, `ring-in`, count-up (`useCountUp`); all honour
     prefers-reduced-motion.
 - TypeScript types in `web/src/lib/api.ts` mirror `api/models.py`; change both together.
@@ -54,7 +61,8 @@ Next in 3b: Explorer.
   Logos are NFL trademarks: private, personal use only.
 - Charts are hand-written SVG (`SeasonChart`, `QbPanels`, rings); no chart library.
 - Copy: plain, sentence case, active voice; errors say what happened and what to do.
-- Check: `cd web && npm run build` (typecheck + build).
+- Check: `cd web && npm run build` (typecheck + build). Never run bare `tsc`/`tsc -b`:
+  it writes .js files next to the sources and Vite will serve those stale copies.
 
 ## Architecture rules
 - `ingest` is the ONLY writer. It builds `nfl.duckdb.building`, validates, then

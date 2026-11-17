@@ -22,7 +22,7 @@ def test_build_publishes_database_with_all_views(fixture_settings: Settings) -> 
             assert con.execute(f"SELECT count(*) FROM {view}").fetchone()[0] > 0, view
         # Joins never multiply rows.
         assert con.execute("SELECT count(*) FROM plays").fetchone()[0] == 9
-        assert con.execute("SELECT count(*) FROM player_weeks").fetchone()[0] == 3
+        assert con.execute("SELECT count(*) FROM player_weeks").fetchone()[0] == 5
         info = con.execute("SELECT latest_season, latest_week FROM build_info").fetchone()
         assert info == (SEASON, 6)
     finally:
@@ -37,7 +37,7 @@ def test_player_weeks_attach_snaps_injuries_and_weekly_ngs_only(
     try:
         rows = con.execute(
             "SELECT week, offense_snaps, injury_report_status, ngs_cpoe FROM player_weeks "
-            "WHERE player_id = ? ORDER BY week",
+            "WHERE player_id = ? AND season_type = 'REG' ORDER BY week",
             [QB],
         ).fetchall()
     finally:

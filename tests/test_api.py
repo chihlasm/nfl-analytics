@@ -87,19 +87,6 @@ def test_games_for_week(client: TestClient) -> None:
     assert client.get("/api/games?week=17").json()["week"] == 5
 
 
-def test_leaders(client: TestClient) -> None:
-    body = client.get("/api/leaders?limit=3").json()
-    assert body["season"] == SEASON
-    boards = {b["key"]: b for b in body["boards"]}
-    assert next(iter(boards)) == "passing_yards"
-    # passing_yards is STATS index 2 -> 3 * week weight; QB weeks weigh 1 and 2, WR 3.
-    top = boards["passing_yards"]["rows"]
-    assert [(r["name"], r["value"], r["games"]) for r in top] == [
-        ("Drake London", 9.0, 1),
-        ("Michael Penix Jr.", 9.0, 2),
-    ]
-
-
 def test_injuries(client: TestClient) -> None:
     body = client.get("/api/injuries").json()
     assert body["week"] == 6
@@ -114,7 +101,12 @@ def test_player_search_and_profile(client: TestClient) -> None:
     profile = client.get(f"/api/players/{QB}").json()
     assert profile["season"] == SEASON
     assert profile["columns"][0]["group"] == "passing"
-    assert [w["week"] for w in profile["weeks"]] == [5, 6]
+    # The game log includes the playoff week after the regular season.
+    assert [(w["week"], w["season_type"]) for w in profile["weeks"]] == [
+        (5, "REG"),
+        (6, "REG"),
+        (19, "POST"),
+    ]
     assert profile["weeks"][1]["injury_status"] == "Questionable"
     metrics = {mv["name"]: mv for mv in profile["metrics"]}
     assert metrics["short_throw_misses"]["value"] == 2

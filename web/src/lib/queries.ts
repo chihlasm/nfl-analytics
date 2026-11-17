@@ -2,9 +2,9 @@
  * One hook per endpoint. The data changes once a day (news every 15 minutes), so
  * results stay fresh for a while and screens switch instantly from cache.
  */
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
-import { api, type Injuries, type Leaders, type Meta, type News, type PlayerProfile, type PlayerSummary, type Standings, type TeamProfile, type Week } from "./api";
+import { api, type Explorer, type ExplorerOrder, type ExplorerSort, type Injuries, type Meta, type SeasonType, type StatCatalog, type News, type PlayerProfile, type PlayerSummary, type Standings, type TeamProfile, type Week } from "./api";
 
 const HOUR = 60 * 60 * 1000;
 
@@ -18,14 +18,6 @@ export function useWeek(season: number | undefined, week: number | undefined) {
     queryFn: () => api<Week>("/api/games", { season, week }),
     staleTime: HOUR,
     placeholderData: keepPreviousData,
-  });
-}
-
-export function useLeaders(season?: number) {
-  return useQuery({
-    queryKey: ["leaders", season],
-    queryFn: () => api<Leaders>("/api/leaders", { season, limit: 5 }),
-    staleTime: HOUR,
   });
 }
 
@@ -81,6 +73,54 @@ export function useTeam(abbr: string | undefined, season: number | undefined) {
     queryKey: ["team", abbr, season],
     queryFn: () => api<TeamProfile>(`/api/teams/${encodeURIComponent(abbr ?? "")}`, { season }),
     enabled: Boolean(abbr),
+    staleTime: HOUR,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** The stat catalog only changes with a new release, so it is fetched once. */
+export function useStatCatalog() {
+  return useQuery({
+    queryKey: ["stats"],
+    queryFn: () => api<StatCatalog>("/api/stats"),
+    staleTime: Infinity,
+  });
+}
+
+/** A type alias (not an interface) so it passes straight through as query params. */
+export type ExplorerFilters = {
+  stat: string;
+  season?: number;
+  season_type?: SeasonType;
+  position?: string;
+  team?: string;
+  min_games?: number;
+  sort?: ExplorerSort;
+  order?: ExplorerOrder;
+};
+
+/** The top few players on one stat (the home page's leaders panel). */
+export function useTopPlayers(filters: ExplorerFilters, limit: number) {
+  return useQuery({
+    queryKey: ["explorer", filters, limit, 0],
+    queryFn: () => api<Explorer>("/api/explorer", { ...filters, limit }),
+    staleTime: HOUR,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export const EXPLORER_PAGE = 50;
+
+/** Every matching player, a page at a time ("Show more"). */
+export function useExplorer(filters: ExplorerFilters) {
+  return useInfiniteQuery({
+    queryKey: ["explorer", filters, "pages"],
+    queryFn: ({ pageParam }) => api<Explorer>("/api/explorer", { ...filters, limit: EXPLORER_PAGE, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (last) => {
+      const next = last.offset + last.rows.length;
+      return next < last.total && last.rows.length > 0 ? next : undefined;
+    },
     staleTime: HOUR,
     placeholderData: keepPreviousData,
   });

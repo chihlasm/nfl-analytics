@@ -1,14 +1,15 @@
-import { ExternalLink } from "lucide-react";
+import { ArrowRight, ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 
 import { Notice, QueryState } from "../components/Notice";
 import { TeamLink, TeamMark } from "../components/TeamMark";
-import { ChipRow, Panel, Segmented, type Option } from "../components/ui";
-import type { Game, InjuryStatus, LeaderRow, NewsItem } from "../lib/api";
+import { ChipRow, Panel, Segmented, Select, type Option } from "../components/ui";
+import type { ExplorerRow, Game, InjuryStatus, NewsItem } from "../lib/api";
 import { ago, kickoff, num, shortDate, weekLabel } from "../lib/format";
 import { alpha, useScreenTeam } from "../lib/palette";
-import { useInjuries, useLeaders, useMeta, useNews, useWeek } from "../lib/queries";
+import { useInjuries, useMeta, useNews, useStatCatalog, useTopPlayers, useWeek } from "../lib/queries";
+import { explorerLink, rememberStat, rememberedStat, statGroups } from "../lib/stats";
 import { team } from "../lib/teams";
 
 const bright = (abbr: string | null | undefined, fallback = "#6b7280") => team(abbr)?.bright ?? fallback;
@@ -327,65 +328,94 @@ const LEADER_VIEWS: readonly Option<LeadersView>[] = [
   { key: "ranked", label: "Ranked" },
   { key: "bars", label: "Bars" },
 ];
+const DEFAULT_LEADER_STAT = "passing_yards";
 
 function Leaders({ season }: { season: number | undefined }) {
-  const leaders = useLeaders(season);
-  const boards = leaders.data?.boards ?? [];
-  const [key, setKey] = useState<string | undefined>(undefined);
+  const catalog = useStatCatalog();
+  const stats = catalog.data?.stats ?? [];
+  const [chosen, setChosen] = useState<string>(() => rememberedStat() ?? DEFAULT_LEADER_STAT);
+  // A remembered stat that no longer exists falls back to the default.
+  const stat = stats.length && !stats.some((s) => s.key === chosen) ? DEFAULT_LEADER_STAT : chosen;
+  const top = useTopPlayers({ stat, season }, 5);
   const [view, setView] = useState<LeadersView>("ranked");
-  const board = boards.find((b) => b.key === key) ?? boards[0];
-  const top = board?.rows[0]?.value ?? 1;
+  const data = top.data;
+  const rows = data?.rows ?? [];
+  const decimals = data?.stat.decimals ?? 0;
+  const max = Math.max(...rows.map((r) => Math.abs(r.value)), 1);
+  const choose = (key: string) => {
+    setChosen(key);
+    rememberStat(key);
+  };
 
   return (
     <Panel
       title="League leaders"
-      subtitle={leaders.data?.through_week ? `Through week ${leaders.data.through_week}` : undefined}
+      subtitle={data?.through_week ? `Regular season, through week ${data.through_week}` : "Regular season"}
       delay={0.15}
       actions={<Segmented options={LEADER_VIEWS} value={view} onChange={setView} label="Leaders view" />}
     >
-      <QueryState isPending={leaders.isPending} error={leaders.error} empty={!board} rows={5}>
-        <ChipRow options={boards.map((b) => ({ key: b.key, label: b.label }))} value={board?.key ?? ""} onChange={setKey} label="Stat" />
-        {view === "ranked" ? (
-          <ol className="flex flex-col gap-2">
-            {board?.rows.map((r, i) => (
-              <li key={r.player_id}>
-                <LeaderLink row={r} rank={i + 1} decimals={board.decimals} />
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <ol className="flex flex-col gap-4">
-            {board?.rows.map((r, i) => (
-              <li key={r.player_id}>
-                <Link to={`/players/${r.player_id}`} className="group flex flex-col gap-1.5">
-                  <span className="flex items-baseline justify-between text-sm font-semibold">
-                    <span className="group-hover:underline group-hover:underline-offset-4">
-                      {r.name} <span className="text-faint">{r.team}</span>
+      {stats.length > 0 && (
+        <Select value={stat} onChange={choose} label="Stat" prefix="Stat" groups={statGroups(stats)} className="w-full sm:w-auto sm:self-start" />
+      )}
+      <QueryState isPending={top.isPending || catalog.isPending} error={top.error ?? catalog.error} empty={rows.length === 0} emptyText="Nobody has recorded this stat yet this season." rows={5}>
+        <div className={`flex flex-col gap-4 transition-opacity ${top.isPlaceholderData ? "opacity-60" : ""}`}>
+          {view === "ranked" ? (
+            <ol className="flex flex-col gap-2">
+              {rows.map((r) => (
+                <li key={r.player_id}>
+                  <LeaderLink row={r} rank={r.rank} decimals={decimals} />
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <ol className="flex flex-col gap-4">
+              {rows.map((r, i) => (
+                <li key={r.player_id}>
+                  <Link to={`/players/${r.player_id}`} className="group flex flex-col gap-1.5">
+                    <span className="flex items-baseline justify-between text-sm font-semibold">
+                      <span className="group-hover:underline group-hover:underline-offset-4">
+                        {r.name} <span className="text-faint">{r.team}</span>
+                      </span>
+                      <span className="num text-[1.5rem]">{num(r.value, decimals)}</span>
                     </span>
-                    <span className="num text-[1.5rem]">{num(r.value, board.decimals)}</span>
-                  </span>
-                  <span className="block h-4 overflow-hidden rounded-md bg-white/[0.06]">
-                    <span
-                      className="grow-right block h-full rounded-md"
-                      style={{
-                        width: `${(r.value / top) * 100}%`,
-                        background: `linear-gradient(90deg, ${team(r.team)?.primary ?? "#374151"}, ${bright(r.team)})`,
-                        boxShadow: `0 0 18px -2px ${alpha(bright(r.team), 0.8)}, inset 0 1px 0 rgba(255,255,255,0.35)`,
-                        animationDelay: `${i * 0.08}s`,
-                      }}
-                    />
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ol>
-        )}
+                    <span className="block h-4 overflow-hidden rounded-md bg-white/[0.06]">
+                      <span
+                        className={`grow-right block h-full rounded-md ${r.value < 0 ? "neg-stripes" : ""}`}
+                        style={{
+                          width: `${(Math.abs(r.value) / max) * 100}%`,
+                          animationDelay: `${i * 0.08}s`,
+                          ...(r.value < 0
+                            ? {}
+                            : {
+                                background: `linear-gradient(90deg, ${team(r.team)?.primary ?? "#374151"}, ${bright(r.team)})`,
+                                boxShadow: `0 0 18px -2px ${alpha(bright(r.team), 0.8)}, inset 0 1px 0 rgba(255,255,255,0.35)`,
+                              }),
+                        }}
+                      />
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ol>
+          )}
+          {data && (
+            <Link
+              to={explorerLink(stat, data.season)}
+              className="group flex min-h-12 items-center justify-between gap-3 rounded-[14px] border border-white/[0.1] bg-white/[0.03] px-4 font-bold transition-colors hover:border-[var(--tb)] hover:bg-white/[0.06]"
+            >
+              <span>
+                See all {data.total} players <span className="font-medium text-muted">in the Explorer</span>
+              </span>
+              <ArrowRight size={18} aria-hidden="true" className="text-[var(--tb)] transition-transform group-hover:translate-x-1" />
+            </Link>
+          )}
+        </div>
       </QueryState>
     </Panel>
   );
 }
 
-function LeaderLink({ row: r, rank, decimals }: { row: LeaderRow; rank: number; decimals: number }) {
+function LeaderLink({ row: r, rank, decimals }: { row: ExplorerRow; rank: number; decimals: number }) {
   const first = rank === 1;
   const b = bright(r.team);
   const p = team(r.team)?.primary ?? "#374151";

@@ -92,12 +92,6 @@ export interface LeaderBoard {
   rows: LeaderRow[];
 }
 
-export interface Leaders {
-  season: number;
-  through_week: number | null;
-  boards: LeaderBoard[];
-}
-
 export type InjuryStatus = "Out" | "Doubtful" | "Questionable";
 
 export interface InjuryRow {
@@ -290,4 +284,52 @@ export interface TeamProfile {
   leaders: LeaderBoard[];
   injury_week: number | null;
   injuries: InjuryRow[];
+}
+
+export type StatGroup = "passing" | "rushing" | "receiving" | "defense";
+
+export interface StatInfo {
+  key: string;
+  label: string;
+  short: string;
+  group: StatGroup;
+  decimals: number;
+}
+
+export interface StatCatalog {
+  stats: StatInfo[];
+  position_groups: string[];
+}
+
+export type SeasonType = "REG" | "POST" | "ALL";
+export type ExplorerSort = "total" | "per_game";
+export type ExplorerOrder = "desc" | "asc";
+
+export interface ExplorerRow {
+  rank: number;
+  player_id: string;
+  name: string;
+  position: string | null;
+  position_group: string | null;
+  /** With a team filter, that team; otherwise the player's latest team. */
+  team: string | null;
+  games: number;
+  value: number;
+  per_game: number;
+}
+
+export interface Explorer {
+  season: number;
+  seasons: number[];
+  season_type: SeasonType;
+  stat: StatInfo;
+  sort: ExplorerSort;
+  order: ExplorerOrder;
+  position_group: string | null;
+  team: string | null;
+  min_games: number;
+  through_week: number | null;
+  total: number;
+  offset: number;
+  rows: ExplorerRow[];
 }
