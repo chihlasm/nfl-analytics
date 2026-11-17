@@ -4,7 +4,7 @@
  */
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
-import { api, type Explorer, type ExplorerOrder, type ExplorerSort, type Injuries, type Meta, type PlayList, type PlaySort, type SeasonType, type StatCatalog, type News, type PlayerProfile, type PlayerSummary, type Standings, type TeamProfile, type Week } from "./api";
+import { api, type Explorer, type ExplorerOrder, type ExplorerSort, type Injuries, type Meta, type PlayList, type PlaySort, type SeasonType, type StatCatalog, type TeamExplorer, type News, type PlayerProfile, type PlayerSummary, type Standings, type TeamProfile, type Week } from "./api";
 
 const HOUR = 60 * 60 * 1000;
 
@@ -129,7 +129,9 @@ export function useExplorer(filters: ExplorerFilters) {
 
 /** What the plays panel is showing (also its address-bar state). */
 export type PlaysQuery = {
-  player: string;
+  /** A player's plays; leave out (and set subject "team" + team) for a team stat. */
+  player?: string;
+  subject?: "team";
   stat: string;
   season?: number;
   season_type?: SeasonType;
@@ -144,13 +146,35 @@ export const PLAYS_PAGE = 50;
 export function usePlays(q: PlaysQuery | null) {
   return useInfiniteQuery({
     queryKey: ["plays", q],
-    queryFn: ({ pageParam }) => api<PlayList>("/api/plays", { ...(q as PlaysQuery), limit: PLAYS_PAGE, offset: pageParam }),
+    queryFn: ({ pageParam }) => {
+      const { subject, ...params } = q as PlaysQuery;
+      const path = subject === "team" ? "/api/team-plays" : "/api/plays";
+      return api<PlayList>(path, { ...params, limit: PLAYS_PAGE, offset: pageParam });
+    },
     initialPageParam: 0,
     getNextPageParam: (last) => {
       const next = last.offset + last.rows.length;
       return next < last.plays && last.rows.length > 0 ? next : undefined;
     },
     enabled: q !== null,
+    staleTime: HOUR,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export type TeamExplorerFilters = {
+  stat: string;
+  season?: number;
+  season_type?: SeasonType;
+  conference?: "AFC" | "NFC";
+  order?: "best" | "worst";
+};
+
+/** All 32 teams ranked on one team stat. */
+export function useTeamExplorer(filters: TeamExplorerFilters) {
+  return useQuery({
+    queryKey: ["explorer-teams", filters],
+    queryFn: () => api<TeamExplorer>("/api/explorer/teams", filters),
     staleTime: HOUR,
     placeholderData: keepPreviousData,
   });

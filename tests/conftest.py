@@ -120,7 +120,7 @@ def write_fixture_cache(cache: Path) -> None:
         NULL::VARCHAR AS pass_defense_1_player_id, NULL::VARCHAR AS pass_defense_2_player_id,
         'BAL' AS home_team, 'ATL' AS away_team, 1.0 AS qtr, '10:00' AS time,
         1.0 AS down, 10.0 AS ydstogo, 'ATL 25' AS yrdln, 'Play ' || play_id AS "desc",
-        0.0 AS penalty
+        0.0 AS penalty, 0.0 AS third_down_converted
     """
     _write(con, f"SELECT {pbp_cols} FROM fx", cache / "pbp" / f"play_by_play_{SEASON}.parquet")
     _write(

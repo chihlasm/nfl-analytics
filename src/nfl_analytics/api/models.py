@@ -240,7 +240,8 @@ class TeamRank(BaseModel):
     teams: int
     league_avg: float | None
     decimals: int
-    unit: str  # "" | "%" | "yds" | "pts"
+    unit: str  # count | rate (0-1) | epa | yards | points (api/team_stats.py)
+    has_plays: bool = True  # points come from scores, so they have no plays list
 
 
 class TeamProfile(BaseModel):
@@ -269,11 +270,14 @@ class StatInfo(BaseModel):
     first_season: int | None = None
     per_game: bool = True  # whether "per game" means anything (not for rates)
     credit: str | None = None  # data credit to show with it (FTN)
+    higher_is_better: bool = True  # sets "best first" for rankings
+    has_plays: bool = True  # whether tapping it can list plays (not points)
 
 
 class StatCatalog(BaseModel):
     stats: list[StatInfo]
     position_groups: list[str]
+    team_stats: list[StatInfo] = []
 
 
 class ExplorerRow(BaseModel):
@@ -345,7 +349,8 @@ class PlayWeek(BaseModel):
 
 class PlayList(BaseModel):
     stat: StatInfo
-    player: PlayerRef
+    player: PlayerRef | None  # None for a team stat
+    subject_team: str | None = None  # the team, for a team stat
     season: int
     season_type: str
     week: int | None
@@ -359,3 +364,26 @@ class PlayList(BaseModel):
     weeks: list[PlayWeek]  # the whole scope by week, for the week picker and chart
     offset: int
     rows: list[PlayRow]
+
+
+class TeamExplorerRow(BaseModel):
+    rank: int
+    team: str
+    name: str
+    conference: str | None
+    division: str | None
+    games: int
+    value: float
+    plays: int | None  # plays behind it (None for points, which come from scores)
+
+
+class TeamExplorer(BaseModel):
+    season: int
+    seasons: list[int]
+    season_type: str
+    stat: StatInfo
+    order: str  # best | worst
+    conference: str | None
+    through_week: int | None
+    league_avg: float | None
+    rows: list[TeamExplorerRow]

@@ -19,7 +19,9 @@ import {
 import { kickoff, num, ordinal, pctText, shortDate, signed, weekLabel, winPct, wlt } from "../lib/format";
 import { useCountUp, useWidth } from "../lib/motion";
 import { alpha, useScreenTeam } from "../lib/palette";
+import type { PlaysTarget } from "../lib/plays";
 import { useTeam } from "../lib/queries";
+import { statValue } from "../lib/stats";
 import { team } from "../lib/teams";
 
 function bright(abbr: string): string {
@@ -85,7 +87,7 @@ export function Team() {
       {played.length > 0 && <GameByGame profile={p} games={played} />}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-        <Ranks ranks={p.ranks} />
+        <Ranks ranks={p.ranks} team={p.info.team} season={p.season} />
         <div className="flex flex-col gap-5">
           {p.division.length > 0 && <Division profile={p} />}
           {p.injuries.length > 0 && <TeamInjuries profile={p} />}
@@ -584,12 +586,14 @@ const RANK_VIEWS: readonly Option<RankView>[] = [
 ];
 
 function rankValue(r: TeamRank, v: number | null = r.value): string {
-  if (v == null) return "–";
-  if (r.key.startsWith("epa")) return signed(v, r.decimals);
-  return `${num(v, r.decimals)}${r.unit === "%" ? "%" : ""}`;
+  return statValue(r, v);
 }
 
-function Ranks({ ranks }: { ranks: TeamRank[] }) {
+function rankTarget(r: TeamRank, abbr: string, season: number): PlaysTarget | null {
+  return r.has_plays && r.value != null ? { subject: "team", team: abbr, stat: r.key, season } : null;
+}
+
+function Ranks({ ranks, team: abbr, season }: { ranks: TeamRank[]; team: string; season: number }) {
   const [side, setSide] = useState<Side>("offense");
   const [view, setView] = useState<RankView>("bars");
   const rows = ranks.filter((r) => r.side === side);
@@ -612,7 +616,9 @@ function Ranks({ ranks }: { ranks: TeamRank[] }) {
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="text-sm font-semibold text-gray-200">{r.label}</span>
                   <span className="flex items-baseline gap-2">
-                    <span className="num text-[1.35rem] leading-none text-white">{rankValue(r)}</span>
+                    <StatTap target={rankTarget(r, abbr, season)} label={`${r.label}: see the plays`} className="num text-[1.35rem] leading-none text-white">
+                      {rankValue(r)}
+                    </StatTap>
                     <span className={`w-11 text-right text-xs font-extrabold ${third === 1 ? "text-[var(--tb)]" : "text-muted"}`}>
                       {r.rank ? ordinal(r.rank) : "–"}
                     </span>
@@ -652,7 +658,11 @@ function Ranks({ ranks }: { ranks: TeamRank[] }) {
             {rows.map((r) => (
               <tr key={r.key}>
                 <td className="font-semibold">{r.label}</td>
-                <td>{rankValue(r)}</td>
+                <td>
+                  <StatTap target={rankTarget(r, abbr, season)} label={`${r.label}: see the plays`}>
+                    {rankValue(r)}
+                  </StatTap>
+                </td>
                 <td className="font-bold">{r.rank ? ordinal(r.rank) : "–"}</td>
                 <td className="text-muted">{rankValue(r, r.league_avg)}</td>
               </tr>

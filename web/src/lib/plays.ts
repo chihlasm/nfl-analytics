@@ -10,6 +10,7 @@ import type { PlaysQuery } from "./queries";
 
 const KEYS = {
   player: "play_player",
+  subject: "play_subject",
   stat: "play_stat",
   season: "play_season",
   season_type: "play_type",
@@ -19,8 +20,10 @@ const KEYS = {
   counted_only: "play_counted",
 } as const;
 
+/** What a tappable number opens: a player's stat, or a team stat (subject "team"). */
 export interface PlaysTarget {
-  player: string;
+  player?: string;
+  subject?: "team";
   stat: string;
   season?: number;
   season_type?: SeasonType;
@@ -30,9 +33,11 @@ export interface PlaysTarget {
 
 /** Read the panel's state from the address bar; null when it is closed. */
 export function readPlays(params: URLSearchParams): PlaysQuery | null {
-  const player = params.get(KEYS.player);
+  const player = params.get(KEYS.player) || undefined;
+  const subject = params.get(KEYS.subject) === "team" ? ("team" as const) : undefined;
   const stat = params.get(KEYS.stat);
-  if (!player || !stat) return null;
+  const teamParam = params.get(KEYS.team) || undefined;
+  if (!stat || (subject === "team" ? !teamParam : !player)) return null;
   const num = (k: string) => {
     const v = Number(params.get(k));
     return Number.isInteger(v) && v > 0 ? v : undefined;
@@ -41,11 +46,12 @@ export function readPlays(params: URLSearchParams): PlaysQuery | null {
   const sort = params.get(KEYS.sort);
   return {
     player,
+    subject,
     stat,
     season: num(KEYS.season),
     season_type: type === "POST" || type === "ALL" ? type : undefined,
     week: num(KEYS.week),
-    team: params.get(KEYS.team) || undefined,
+    team: teamParam,
     sort: sort === "value" ? (sort as PlaySort) : undefined,
     counted_only: params.get(KEYS.counted_only) === "1" ? "true" : undefined,
   };
@@ -101,7 +107,7 @@ export function useClosePlays() {
       return;
     }
     const params = new URLSearchParams(location.search);
-    write(params, { player: undefined, stat: undefined, season: undefined, season_type: undefined, week: undefined, team: undefined, sort: undefined, counted_only: undefined });
+    write(params, { player: undefined, subject: undefined, stat: undefined, season: undefined, season_type: undefined, week: undefined, team: undefined, sort: undefined, counted_only: undefined });
     navigate({ pathname: location.pathname, search: params.toString() }, { replace: true, preventScrollReset: true });
   }, [navigate, location]);
 }
