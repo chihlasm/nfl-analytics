@@ -6,7 +6,20 @@ export const GROUP_LABELS: Record<StatGroup, string> = {
   rushing: "Rushing",
   receiving: "Receiving",
   defense: "Defense",
+  advanced: "Advanced",
 };
+
+/** A stat's value as people read it: 13.8% for rates, +0.214 for EPA, 1,207 for counts. */
+export function statValue(stat: Pick<StatInfo, "unit" | "decimals">, value: number | null | undefined, perGame = false): string {
+  if (value == null || Number.isNaN(value)) return "–";
+  if (stat.unit === "rate") return `${(value * 100).toFixed(1)}%`;
+  const decimals = perGame ? Math.max(1, stat.decimals) : stat.decimals;
+  if (stat.unit === "epa") {
+    const text = Math.abs(value).toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    return `${value > 0 ? "+" : value < 0 ? "−" : ""}${text}`;
+  }
+  return value.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
 
 /** The catalog as dropdown groups: Passing, Rushing, Receiving, Defense. */
 export function statGroups(stats: readonly StatInfo[]): SelectGroup<string>[] {

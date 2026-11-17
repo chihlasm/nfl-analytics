@@ -17,7 +17,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 
 from nfl_analytics import __version__
-from nfl_analytics.api import explorer, queries, teams
+from nfl_analytics.api import explorer, plays, queries, teams
 from nfl_analytics.api import models as m
 from nfl_analytics.api.db import Database, DatabaseUnavailable
 from nfl_analytics.api.news import NewsCache, news_from_env
@@ -93,8 +93,8 @@ def create_app(
         return queries.week_games(cur, season_or_current(cur, season), week)
 
     @app.get("/api/stats", response_model=m.StatCatalog)
-    def get_stats() -> m.StatCatalog:
-        return explorer.catalog()
+    def get_stats(cur: Cur) -> m.StatCatalog:
+        return explorer.catalog(cur)
 
     @app.get("/api/explorer", response_model=m.Explorer)
     def get_explorer(
@@ -109,6 +109,7 @@ def create_app(
         order: Annotated[explorer.Order, Query()] = "desc",
         limit: Annotated[int, Query(ge=1, le=explorer.MAX_PAGE)] = 50,
         offset: Annotated[int, Query(ge=0, le=5000)] = 0,
+        min_plays: Annotated[int | None, Query(ge=0, le=2000)] = None,
     ) -> m.Explorer:
         result = explorer.explore(
             cur,
@@ -122,9 +123,41 @@ def create_app(
             order=order,
             limit=limit,
             offset=offset,
+            min_plays=min_plays,
         )
         if result is None:
             raise HTTPException(status_code=404, detail="No stat with that name.")
+        return result
+
+    @app.get("/api/plays", response_model=m.PlayList)
+    def get_plays(
+        cur: Cur,
+        player: Annotated[str, Query(min_length=3, max_length=20)],
+        stat: Annotated[str, Query(max_length=40)],
+        season: Season = None,
+        season_type: Annotated[plays.SeasonType, Query()] = "REG",
+        week: WeekParam = None,
+        team: Annotated[str | None, Query(pattern=r"^[A-Z]{2,3}$")] = None,
+        sort: Annotated[plays.Sort, Query()] = "time",
+        counted_only: bool = False,
+        limit: Annotated[int, Query(ge=1, le=plays.MAX_PAGE)] = 50,
+        offset: Annotated[int, Query(ge=0, le=5000)] = 0,
+    ) -> m.PlayList:
+        result = plays.play_list(
+            cur,
+            key=stat,
+            player_id=player,
+            season=season_or_current(cur, season),
+            season_type=season_type,
+            week=week,
+            team=team,
+            sort=sort,
+            counted_only=counted_only,
+            limit=limit,
+            offset=offset,
+        )
+        if result is None:
+            raise HTTPException(status_code=404, detail="No plays for that player and stat.")
         return result
 
     @app.get("/api/injuries", response_model=m.Injuries)

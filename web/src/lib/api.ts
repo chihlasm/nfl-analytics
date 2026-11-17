@@ -286,7 +286,8 @@ export interface TeamProfile {
   injuries: InjuryRow[];
 }
 
-export type StatGroup = "passing" | "rushing" | "receiving" | "defense";
+export type StatGroup = "passing" | "rushing" | "receiving" | "defense" | "advanced";
+export type StatUnit = "count" | "rate" | "epa" | "yards";
 
 export interface StatInfo {
   key: string;
@@ -294,6 +295,16 @@ export interface StatInfo {
   short: string;
   group: StatGroup;
   decimals: number;
+  /** stat = box score; metric = an advanced stat from sql/metrics.sql. */
+  kind: "stat" | "metric";
+  /** rate values are 0-1 and shown as a percentage. */
+  unit: StatUnit;
+  description: string | null;
+  first_season: number | null;
+  /** Whether "per game" means anything for it (not for rates). */
+  per_game: boolean;
+  /** Data credit to show wherever it appears (FTN charting). */
+  credit: string | null;
 }
 
 export interface StatCatalog {
@@ -316,6 +327,8 @@ export interface ExplorerRow {
   games: number;
   value: number;
   per_game: number;
+  /** Plays behind a rate or average. */
+  attempts: number | null;
 }
 
 export interface Explorer {
@@ -332,4 +345,70 @@ export interface Explorer {
   total: number;
   offset: number;
   rows: ExplorerRow[];
+  /** Qualifier for rates and averages. */
+  min_plays: number;
+  /** Why there are no rows (charting starts later), if that's the reason. */
+  note: string | null;
+}
+
+export interface PlayerRef {
+  player_id: string;
+  name: string;
+  position: string | null;
+  team: string | null;
+}
+
+export type PlayTag = "TD" | "INT" | "Sack" | "Fumble" | "Penalty";
+
+export interface PlayRow {
+  game_id: string;
+  play_id: number;
+  season_type: string;
+  week: number;
+  /** The offense on the play. */
+  team: string | null;
+  /** The other team, from the player's side. */
+  opponent: string | null;
+  is_home: boolean | null;
+  qtr: number | null;
+  clock: string | null;
+  down: number | null;
+  distance: number | null;
+  field: string | null;
+  description: string | null;
+  value: number | null;
+  epa: number | null;
+  air_yards: number | null;
+  yards: number | null;
+  /** For rates: whether this play is one of the counted ones (a miss). */
+  counted: boolean;
+  tags: PlayTag[];
+}
+
+export interface PlayWeek {
+  season_type: string;
+  week: number;
+  plays: number;
+  value: number | null;
+}
+
+export type PlaySort = "time" | "value";
+
+export interface PlayList {
+  stat: StatInfo;
+  player: PlayerRef;
+  season: number;
+  season_type: SeasonType;
+  week: number | null;
+  team: string | null;
+  sort: PlaySort;
+  counted_only: boolean;
+  value: number | null;
+  /** nflverse's box-score total for the same scope (box-score stats only). */
+  official: number | null;
+  plays: number;
+  counted: number;
+  weeks: PlayWeek[];
+  offset: number;
+  rows: PlayRow[];
 }

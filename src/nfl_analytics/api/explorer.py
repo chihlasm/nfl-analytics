@@ -11,6 +11,7 @@ from typing import Literal
 
 import duckdb
 
+from nfl_analytics import metrics
 from nfl_analytics.api import models as m
 from nfl_analytics.api.queries import _rows
 from nfl_analytics.api.stats import STATS, STATS_BY_KEY, Stat
@@ -23,6 +24,10 @@ Order = Literal["desc", "asc"]
 # specialists have no box-score stats here, so they aren't offered.
 POSITION_GROUPS: tuple[str, ...] = ("QB", "RB", "WR", "TE", "DL", "LB", "DB")
 MAX_PAGE = 100
+# Rates and averages rank only players with enough plays behind them, unless the
+# visitor picks another minimum. Roughly a starter's first three games.
+DEFAULT_MIN_PLAYS = 50
+_METRIC_DECIMALS = {"count": 0, "rate": 1, "epa": 3}
 
 # Fixed ranking expressions; ties share a rank, then list alphabetically.
 _RANK_SQL: dict[tuple[Sort, Order], str] = {
@@ -35,12 +40,37 @@ _RANK_SQL: dict[tuple[Sort, Order], str] = {
 
 def stat_info(stat: Stat) -> m.StatInfo:
     return m.StatInfo(
-        key=stat.key, label=stat.label, short=stat.short, group=stat.group, decimals=stat.decimals
+        key=stat.key,
+        label=stat.label,
+        short=stat.short,
+        group=stat.group,
+        decimals=stat.decimals,
+        unit="epa" if stat.key.endswith("_epa") else "count",
     )
 
 
-def catalog() -> m.StatCatalog:
-    return m.StatCatalog(stats=[stat_info(s) for s in STATS], position_groups=list(POSITION_GROUPS))
+def metric_info(metric: metrics.MetricDefinition) -> m.StatInfo:
+    return m.StatInfo(
+        key=metric.name,
+        label=metric.label,
+        short=metric.label,
+        group="advanced",
+        decimals=_METRIC_DECIMALS.get(metric.unit, 1),
+        kind="metric",
+        unit=metric.unit,
+        description=metric.description,
+        first_season=metric.first_season,
+        per_game=metric.unit == "count",
+        credit=metrics.FTN_CREDIT if metrics.uses_ftn(metric) else None,
+    )
+
+
+def catalog(cur: duckdb.DuckDBPyConnection) -> m.StatCatalog:
+    return m.StatCatalog(
+        stats=[stat_info(s) for s in STATS]
+        + [metric_info(d) for d in metrics.list_definitions(cur)],
+        position_groups=list(POSITION_GROUPS),
+    )
 
 
 def seasons(cur: duckdb.DuckDBPyConnection) -> list[int]:
@@ -61,15 +91,33 @@ def explore(
     order: Order = "desc",
     limit: int = 50,
     offset: int = 0,
+    min_plays: int | None = None,
 ) -> m.Explorer | None:
     """None if the stat isn't in the catalog (the route turns that into a 404)."""
-    stat = STATS_BY_KEY.get(stat_key)
-    if stat is None:
-        return None
     if position_group not in POSITION_GROUPS:
         position_group = None
     limit = max(1, min(limit, MAX_PAGE))
     offset = max(0, offset)
+    stat = STATS_BY_KEY.get(stat_key)
+    if stat is None:
+        try:
+            metric = metrics.get_definition(cur, stat_key)
+        except metrics.MetricError:
+            return None
+        return _explore_metric(
+            cur,
+            metric,
+            season=season,
+            season_type=season_type,
+            position_group=position_group,
+            team=team,
+            min_games=min_games,
+            min_plays=min_plays,
+            sort=sort,
+            order=order,
+            limit=limit,
+            offset=offset,
+        )
 
     col = stat.key  # trusted constant from stats.py
     params: dict[str, object] = {
@@ -133,7 +181,83 @@ def explore(
         through_week=through[0] if through else None,
         total=int(total),
         offset=offset,
-        rows=[m.ExplorerRow(**{k: r[k] for k in m.ExplorerRow.model_fields}) for r in rows],
+        rows=[
+            m.ExplorerRow(**{k: r[k] for k in m.ExplorerRow.model_fields if k in r}) for r in rows
+        ],
+    )
+
+
+def _explore_metric(
+    cur: duckdb.DuckDBPyConnection,
+    metric: metrics.MetricDefinition,
+    *,
+    season: int,
+    season_type: SeasonType,
+    position_group: str | None,
+    team: str | None,
+    min_games: int,
+    min_plays: int | None,
+    sort: Sort,
+    order: Order,
+    limit: int,
+    offset: int,
+) -> m.Explorer:
+    info = metric_info(metric)
+    if not info.per_game:
+        sort = "total"
+    needs_qualifier = metric.unit != "count"
+    qualifier = (DEFAULT_MIN_PLAYS if min_plays is None else min_plays) if needs_qualifier else 0
+    rows, total = metrics.metric_leaderboard(
+        cur,
+        metric,
+        season,
+        season_type=season_type,
+        team=team,
+        position_group=position_group,
+        min_games=min_games,
+        min_plays=qualifier,
+        per_game=sort == "per_game",
+        ascending=order == "asc",
+        limit=limit,
+        offset=offset,
+    )
+    through = cur.execute(
+        "SELECT max(week) FROM player_weeks WHERE season = $s AND season_type = 'REG'",
+        {"s": season},
+    ).fetchone()
+    note = None
+    if season < metric.first_season:
+        note = f"{metric.label} uses charting data that starts in {metric.first_season}."
+    return m.Explorer(
+        season=season,
+        seasons=seasons(cur),
+        season_type=season_type,
+        stat=info,
+        sort=sort,
+        order=order,
+        position_group=position_group,
+        team=team,
+        min_games=min_games,
+        through_week=through[0] if through else None,
+        total=total,
+        offset=offset,
+        rows=[
+            m.ExplorerRow(
+                rank=r.rank,
+                player_id=r.player_id,
+                name=r.name,
+                position=r.position,
+                position_group=r.position_group,
+                team=r.team,
+                games=r.games,
+                value=r.value,
+                per_game=r.per_game,
+                attempts=r.attempts,
+            )
+            for r in rows
+        ],
+        min_plays=qualifier,
+        note=note,
     )
 
 

@@ -4,6 +4,7 @@ import { Link, useParams, useSearchParams } from "react-router";
 
 import { Notice, Skeleton, errorText } from "../components/Notice";
 import { StandingsTable } from "../components/Standings";
+import { StatTap } from "../components/StatTap";
 import { TeamLink, TeamMark } from "../components/TeamMark";
 import { ChipRow, HeroFrame, Panel, Segmented, Stat, type Option } from "../components/ui";
 import {
@@ -91,7 +92,7 @@ export function Team() {
         </div>
       </div>
 
-      <Leaders boards={p.leaders} />
+      <Leaders boards={p.leaders} team={p.info.team} season={p.season} />
     </div>
   );
 }
@@ -790,7 +791,7 @@ const LEADER_VIEWS: readonly Option<LeaderView>[] = [
   { key: "bars", label: "Bars" },
 ];
 
-function Leaders({ boards }: { boards: LeaderBoard[] }) {
+function Leaders({ boards, team: abbr, season }: { boards: LeaderBoard[]; team: string; season: number }) {
   const [view, setView] = useState<LeaderView>("cards");
   const filled = boards.filter((b) => b.rows.length > 0);
   if (filled.length === 0) return null;
@@ -809,33 +810,35 @@ function Leaders({ boards }: { boards: LeaderBoard[] }) {
               <h3 className="text-[0.6875rem] font-extrabold uppercase tracking-[0.1em] text-muted">{b.label}</h3>
               <ol className="flex flex-col gap-2.5">
                 {b.rows.map((r, i) => (
-                  <li key={r.player_id}>
-                    <Link to={`/players/${r.player_id}`} className="group flex flex-col gap-1">
-                      <span className="flex items-baseline justify-between gap-3">
-                        <span className="flex min-w-0 items-baseline gap-2">
-                          <span className="num w-4 text-[1.1rem] text-faint">{i + 1}</span>
-                          <span className={`truncate font-bold group-hover:underline group-hover:underline-offset-4 ${i === 0 ? "text-white" : "text-gray-200"}`}>
-                            {r.name}
-                          </span>
-                          <span className="text-xs text-muted">{r.position}</span>
-                        </span>
-                        <span className={`num leading-none ${i === 0 ? "text-[1.9rem] text-white" : "text-[1.35rem] text-gray-300"}`}>
-                          {num(r.value, b.decimals)}
-                        </span>
+                  <li key={r.player_id} className="flex flex-col gap-1">
+                    <span className="flex items-baseline justify-between gap-3">
+                      <span className="flex min-w-0 items-baseline gap-2">
+                        <span className="num w-4 text-[1.1rem] text-faint">{i + 1}</span>
+                        <Link to={`/players/${r.player_id}?season=${season}`} className={`truncate font-bold hover:underline hover:underline-offset-4 ${i === 0 ? "text-white" : "text-gray-200"}`}>
+                          {r.name}
+                        </Link>
+                        <span className="text-xs text-muted">{r.position}</span>
                       </span>
-                      {view === "bars" && (
-                        <span className="ml-6 h-2 overflow-hidden rounded-full bg-white/[0.06]" aria-hidden="true">
-                          <span
-                            className="grow-right block h-full rounded-full"
-                            style={{
-                              width: `${Math.max(4, (r.value / top) * 100)}%`,
-                              background: i === 0 ? "linear-gradient(90deg, var(--tp), var(--tb))" : "color-mix(in srgb, var(--tb) 40%, #2a2a2e)",
-                              animationDelay: `${0.08 * i}s`,
-                            }}
-                          />
-                        </span>
-                      )}
-                    </Link>
+                      <StatTap
+                        target={{ player: r.player_id, stat: b.key, season, team: abbr }}
+                        label={`${r.name}, ${b.label} with ${abbr}: see the plays`}
+                        className={`num leading-none ${i === 0 ? "text-[1.9rem] text-white" : "text-[1.35rem] text-gray-300"}`}
+                      >
+                        {num(r.value, b.decimals)}
+                      </StatTap>
+                    </span>
+                    {view === "bars" && (
+                      <span className="ml-6 h-2 overflow-hidden rounded-full bg-white/[0.06]" aria-hidden="true">
+                        <span
+                          className="grow-right block h-full rounded-full"
+                          style={{
+                            width: `${Math.max(4, (r.value / top) * 100)}%`,
+                            background: i === 0 ? "linear-gradient(90deg, var(--tp), var(--tb))" : "color-mix(in srgb, var(--tb) 40%, #2a2a2e)",
+                            animationDelay: `${0.08 * i}s`,
+                          }}
+                        />
+                      </span>
+                    )}
                   </li>
                 ))}
               </ol>

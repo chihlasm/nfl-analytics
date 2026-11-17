@@ -32,7 +32,15 @@ Explorer v1 (`/explorer`, `GET /api/explorer`, catalog at `GET /api/stats`): ran
 player on any catalog stat with season, season type, team, position group and min-games
 filters, total or per-game, highest or lowest, paged 50 at a time. All filters live in
 the URL. Home leaders use it (stat dropdown + "See all" link into the Explorer).
-Next in 3b: tap a stat to see its plays; Explorer for metrics and team stats.
+Plays behind any number (done): `GET /api/plays` (player + stat or metric, season, type,
+week, team; time or biggest-first; rates can list counted plays only). Box-score stats use
+the play rules in `api/stats.py` (`plays`, `play_value`, `scope`), checked against nflverse
+box scores (2026: exact for the top 40 on all 20 stats). The response carries the official
+total too, and the UI says so when old data disagrees. `PlaysSheet` (one native dialog in
+the shell) is driven by `play_*` URL params via `lib/plays.ts`; wrap any number that has
+plays in `StatTap` (inline or block). Advanced stats are in the catalog and the Explorer
+(rates and averages qualify at 50 plays by default; seasons before charting get a note).
+Next in 3b: team stats in the Explorer.
 
 ## Frontend (web/)
 - Stack (same as WePlan): React 19, react-router 8, TanStack Query 5, Tailwind v4, Vite,
@@ -75,7 +83,12 @@ Next in 3b: tap a stat to see its plays; Explorer for metrics and team stats.
 - Divisions and conferences apply from 2002 (realignment); earlier seasons show
   league tables only.
 - Metric logic lives ONLY in `sql/metrics.sql` (`metric_definitions`) and is executed
-  ONLY through `nfl_analytics.metrics`. Add a metric there, not in an endpoint.
+  ONLY through `nfl_analytics.metrics` (`compute_metric`, `metric_leaderboard`,
+  `metric_plays`, `metric_by_week`). Add a metric there, not in an endpoint. Aggregates
+  must be `count(*)` or `avg(<column>)`; metrics reading FTN fields get the credit
+  automatically (`metrics.FTN_FIELDS`).
+- New box-score stats need a play rule in `api/stats.py`; re-run the box-score comparison
+  before shipping a rule change.
 - User input is always a bound parameter. Never format user values into SQL.
 - SQL files separate statements with a line containing only `-- ;;`.
 

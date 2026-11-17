@@ -3,6 +3,7 @@ import { useId, useState } from "react";
 import type { PlayerProfile, StatColumn, WeekLine } from "../lib/api";
 import { num, pct, weekLabel } from "../lib/format";
 import { useWidth } from "../lib/motion";
+import { StatTap } from "./StatTap";
 import { TeamLink, TeamMark } from "./TeamMark";
 import { ChipRow, Panel, Segmented, type Option } from "./ui";
 
@@ -331,7 +332,14 @@ export function GameLog({ profile }: { profile: PlayerProfile }) {
               </td>
               <td>{w.snap_pct == null ? "–" : pct(w.snap_pct, 0)}</td>
               {cols.map((c) => (
-                <td key={c.key}>{num(w.stats[c.key], c.decimals)}</td>
+                <td key={c.key}>
+                  <StatTap
+                    target={w.stats[c.key] ? { player: profile.player.player_id, stat: c.key, season: profile.season ?? undefined, season_type: w.season_type === "POST" ? "POST" : "REG", week: w.week } : null}
+                    label={`${c.label}, ${weekLabel(w.week, w.season_type, profile.season ?? undefined)}: see the plays`}
+                  >
+                    {num(w.stats[c.key], c.decimals)}
+                  </StatTap>
+                </td>
               ))}
             </tr>
           ))}
@@ -342,7 +350,14 @@ export function GameLog({ profile }: { profile: PlayerProfile }) {
             <td />
             <td />
             {cols.map((c) => (
-              <td key={c.key}>{num(profile.totals[c.key], c.decimals)}</td>
+              <td key={c.key}>
+                <StatTap
+                  target={profile.totals[c.key] ? { player: profile.player.player_id, stat: c.key, season: profile.season ?? undefined } : null}
+                  label={`${c.label}, regular season: see the plays`}
+                >
+                  {num(profile.totals[c.key], c.decimals)}
+                </StatTap>
+              </td>
             ))}
           </tr>
         </tfoot>

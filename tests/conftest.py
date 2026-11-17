@@ -96,7 +96,31 @@ def write_fixture_cache(cache: Path) -> None:
              ELSE 0.0 END AS yards_gained,
         CASE WHEN epa > 0 THEN 1.0 ELSE 0.0 END AS success,
         CASE WHEN play_id = 2 THEN 1.0 ELSE 0.0 END AS interception,
-        0.0 AS fumble_lost, 0.0 AS two_point_attempt
+        0.0 AS fumble_lost, 0.0 AS two_point_attempt,
+        -- Columns the plays panel and the play rules in stats.py read.
+        CASE WHEN pass_attempt = 1 AND sack = 0 AND incomplete_pass = 0
+             THEN coalesce(air_yards, 0) + 3 END AS passing_yards,
+        CASE WHEN pass_attempt = 1 AND sack = 0 AND incomplete_pass = 0
+             THEN coalesce(air_yards, 0) + 3 END AS receiving_yards,
+        NULL::DOUBLE AS rushing_yards, 0.0 AS rush_attempt, 0.0 AS rush_touchdown,
+        NULL::VARCHAR AS rusher_player_id,
+        NULL::VARCHAR AS lateral_rusher_player_id, NULL::DOUBLE AS lateral_rushing_yards,
+        NULL::VARCHAR AS lateral_receiver_player_id, NULL::DOUBLE AS lateral_receiving_yards,
+        CASE WHEN play_id = 7 THEN 1.0 ELSE 0.0 END AS pass_touchdown,
+        CASE WHEN play_id = 7 THEN 1.0 ELSE 0.0 END AS touchdown,
+        CASE WHEN play_id = 7 THEN '{WR}' END AS td_player_id,
+        epa AS qb_epa,
+        CASE WHEN sack = 1 THEN '{LB}' END AS sack_player_id,
+        NULL::VARCHAR AS half_sack_1_player_id, NULL::VARCHAR AS half_sack_2_player_id,
+        CASE WHEN sack = 1 THEN '{LB}' END AS solo_tackle_1_player_id,
+        NULL::VARCHAR AS solo_tackle_2_player_id,
+        CASE WHEN sack = 1 THEN '{LB}' END AS qb_hit_1_player_id,
+        NULL::VARCHAR AS qb_hit_2_player_id,
+        CASE WHEN play_id = 2 THEN '{LB}' END AS interception_player_id,
+        NULL::VARCHAR AS pass_defense_1_player_id, NULL::VARCHAR AS pass_defense_2_player_id,
+        'BAL' AS home_team, 'ATL' AS away_team, 1.0 AS qtr, '10:00' AS time,
+        1.0 AS down, 10.0 AS ydstogo, 'ATL 25' AS yrdln, 'Play ' || play_id AS "desc",
+        0.0 AS penalty
     """
     _write(con, f"SELECT {pbp_cols} FROM fx", cache / "pbp" / f"play_by_play_{SEASON}.parquet")
     _write(
