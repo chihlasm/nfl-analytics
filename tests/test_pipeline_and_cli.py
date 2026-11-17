@@ -10,7 +10,28 @@ from nfl_analytics import cli, pipeline
 from nfl_analytics.build import build_database
 from nfl_analytics.config import Settings
 from nfl_analytics.download import FileResult, Outcome
+from nfl_analytics.logos import LogoReport
 from nfl_analytics.pipeline import Mode, PipelineBusy, pipeline_lock, read_status, run
+
+
+@pytest.fixture(autouse=True)
+def no_logo_downloads(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pipeline tests never touch the network for logos (tests/test_logos.py covers them)."""
+    monkeypatch.setattr(pipeline, "refresh_logos", lambda *a, **k: LogoReport(unchanged=["ATL"]))
+
+
+def test_logo_failure_never_fails_the_run(
+    fixture_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(pipeline, "fetch_all", lambda specs, *a, **k: [])
+
+    def broken(*_a, **_k):  # type: ignore[no-untyped-def]
+        raise RuntimeError("CDN down")
+
+    monkeypatch.setattr(pipeline, "refresh_logos", broken)
+    status = run(fixture_settings, Mode.DAILY)
+    assert status["ok"] is True
+    assert "CDN down" in status["logos"]["error"]
 
 
 def test_daily_run_fetches_current_season_and_missing_files(

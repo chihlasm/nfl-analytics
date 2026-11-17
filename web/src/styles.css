@@ -324,3 +324,15 @@
 @utility pulse-soft {
   animation: pulse-soft 2.4s ease-in-out infinite;
 }
+
+/* Team logos: a faint light edge keeps dark logos (Raiders, Saints) readable on near-black. */
+.team-logo {
+  filter: drop-shadow(0 0 1px rgb(255 255 255 / 0.35));
+}
+
+/* The player hero's big faded logo: present, never competing with the figures. */
+.hero-emblem {
+  opacity: 0.16;
+  transform: rotate(-8deg);
+  mask-image: radial-gradient(circle at 60% 40%, #000 35%, transparent 72%);
+}

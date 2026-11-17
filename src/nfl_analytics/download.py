@@ -14,7 +14,7 @@ import json
 import logging
 import os
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from enum import StrEnum
@@ -81,21 +81,24 @@ def _write_meta(path: Path, response: httpx.Response) -> None:
     os.replace(tmp, _meta_path(path))
 
 
-def fetch_file(
+def fetch_url(
     client: httpx.Client,
-    spec: FileSpec,
-    cache_dir: Path,
+    url: str,
+    path: Path,
     *,
+    label: str,
     allow_missing: bool,
-) -> FileResult:
-    """Download one file if it changed. Retries transient failures with backoff.
+    max_bytes: int | None = None,
+    check: Callable[[bytes], bool] | None = None,
+) -> tuple[Outcome, int]:
+    """Download `url` to `path` if it changed since the last download.
 
-    `allow_missing=True` turns a 404 into NOT_PUBLISHED instead of an error. It is
-    used for the current season, whose files appear only after its first game.
+    Sends the stored ETag / Last-Modified back as a conditional request, retries
+    transient failures with backoff, writes to a temporary file and renames it into
+    place. `max_bytes` rejects anything larger; `check` gets the first bytes of the
+    body and can reject content that isn't what we expect (e.g. not a PNG).
     """
-    path = cache_path(cache_dir, spec)
     path.parent.mkdir(parents=True, exist_ok=True)
-
     headers: dict[str, str] = {}
     meta = _read_meta(path)
     if meta.get("etag"):
@@ -106,13 +109,13 @@ def fetch_file(
     last_error: Exception | None = None
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            with client.stream("GET", spec.url, headers=headers) as response:
+            with client.stream("GET", url, headers=headers) as response:
                 if response.status_code == 304:
-                    return FileResult(spec, Outcome.UNCHANGED, path)
+                    return Outcome.UNCHANGED, 0
                 if response.status_code == 404:
                     if allow_missing:
-                        return FileResult(spec, Outcome.NOT_PUBLISHED, None)
-                    raise DownloadError(f"{spec.label}: not found at {spec.url}")
+                        return Outcome.NOT_PUBLISHED, 0
+                    raise DownloadError(f"{label}: not found at {url}")
                 if response.status_code in RETRYABLE_STATUS:
                     raise httpx.HTTPStatusError(
                         f"HTTP {response.status_code}", request=response.request, response=response
@@ -121,17 +124,29 @@ def fetch_file(
 
                 tmp = path.with_name(path.name + ".part")
                 size = 0
-                with tmp.open("wb") as fh:
-                    for chunk in response.iter_bytes(chunk_size=1 << 20):
-                        fh.write(chunk)
-                        size += len(chunk)
-                expected = response.headers.get("content-length")
-                if expected is not None and int(expected) != size:
+                head = b""
+                try:
+                    with tmp.open("wb") as fh:
+                        for chunk in response.iter_bytes(chunk_size=1 << 20):
+                            if len(head) < 64:
+                                head += chunk[: 64 - len(head)]
+                            size += len(chunk)
+                            if max_bytes is not None and size > max_bytes:
+                                raise DownloadError(f"{label}: larger than {max_bytes} bytes")
+                            fh.write(chunk)
+                    expected = response.headers.get("content-length")
+                    if expected is not None and int(expected) != size:
+                        raise httpx.TransportError(
+                            f"truncated download ({size} of {expected} bytes)"
+                        )
+                    if check is not None and not check(head):
+                        raise DownloadError(f"{label}: unexpected content at {url}")
+                except BaseException:
                     tmp.unlink(missing_ok=True)
-                    raise httpx.TransportError(f"truncated download ({size} of {expected} bytes)")
+                    raise
                 os.replace(tmp, path)
                 _write_meta(path, response)
-                return FileResult(spec, Outcome.DOWNLOADED, path, size)
+                return Outcome.DOWNLOADED, size
         except DownloadError:
             raise
         except (httpx.TransportError, httpx.HTTPStatusError) as exc:
@@ -139,12 +154,27 @@ def fetch_file(
             if attempt == MAX_ATTEMPTS:
                 break
             delay = 2**attempt
-            log.warning(
-                "%s: attempt %d failed (%s); retrying in %ds", spec.label, attempt, exc, delay
-            )
+            log.warning("%s: attempt %d failed (%s); retrying in %ds", label, attempt, exc, delay)
             time.sleep(delay)
 
-    raise DownloadError(f"{spec.label}: failed after {MAX_ATTEMPTS} attempts: {last_error}")
+    raise DownloadError(f"{label}: failed after {MAX_ATTEMPTS} attempts: {last_error}")
+
+
+def fetch_file(
+    client: httpx.Client,
+    spec: FileSpec,
+    cache_dir: Path,
+    *,
+    allow_missing: bool,
+) -> FileResult:
+    """Download one nflverse file if it changed.
+
+    `allow_missing=True` turns a 404 into NOT_PUBLISHED instead of an error. It is
+    used for the current season, whose files appear only after its first game.
+    """
+    path = cache_path(cache_dir, spec)
+    outcome, size = fetch_url(client, spec.url, path, label=spec.label, allow_missing=allow_missing)
+    return FileResult(spec, outcome, None if outcome is Outcome.NOT_PUBLISHED else path, size)
 
 
 def fetch_all(

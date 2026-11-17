@@ -192,3 +192,7 @@ clock; the pipeline correctly excludes spikes.
 Data from the [nflverse](https://github.com/nflverse) project. FTN charting data is
 CC-BY-SA 4.0: **"FTN Data via nflverse."** This platform is private and for
 personal analysis only.
+
+## Team logos
+
+The ingest job downloads the 32 team logos into `data/logos/` (missing ones daily, all of them re-checked weekly) and the dashboard loads them from its own API, so viewers' browsers never contact a third party. If a logo is missing, the team's two-colour disc shows instead. Logos are NFL trademarks; this project is private and for personal use only.

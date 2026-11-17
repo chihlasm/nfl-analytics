@@ -14,7 +14,7 @@ from typing import Annotated
 
 import duckdb
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from nfl_analytics import __version__
 from nfl_analytics.api import models as m
@@ -22,6 +22,7 @@ from nfl_analytics.api import queries
 from nfl_analytics.api.db import Database, DatabaseUnavailable
 from nfl_analytics.api.news import NewsCache, news_from_env
 from nfl_analytics.config import Settings
+from nfl_analytics.logos import logo_path
 
 log = logging.getLogger(__name__)
 
@@ -111,6 +112,18 @@ def create_app(
         if profile is None:
             raise HTTPException(status_code=404, detail="No player with that ID.")
         return profile
+
+    @app.get("/api/teams/{team}/logo", response_class=FileResponse)
+    def get_logo(team: str) -> FileResponse:
+        """A team's logo, from the copy the ingest job cached (never fetched live)."""
+        path = logo_path(settings.data_dir, team)
+        if path is None or not path.is_file():
+            raise HTTPException(status_code=404, detail="No logo for that team.")
+        return FileResponse(
+            path,
+            media_type="image/png",
+            headers={"Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff"},
+        )
 
     @app.get("/api/news", response_model=m.News)
     def get_news() -> m.News:

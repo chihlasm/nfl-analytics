@@ -158,7 +158,16 @@ export function Ring({
  * The hero card: a light that circles the border, diagonal stripes, a giant outlined
  * word in the background and a periodic light sweep. All decoration is aria-hidden.
  */
-export function HeroFrame({ watermark, children }: { watermark?: string; children: ReactNode }) {
+export function HeroFrame({
+  watermark,
+  emblem,
+  children,
+}: {
+  watermark?: string;
+  /** A team code: its logo sits large and faded behind the top-right corner. */
+  emblem?: string | null;
+  children: ReactNode;
+}) {
   return (
     <div className="rise relative overflow-hidden rounded-[26px] bg-white/10 p-[2px]">
       <div
@@ -189,6 +198,17 @@ export function HeroFrame({ watermark, children }: { watermark?: string; childre
           >
             {watermark}
           </div>
+        )}
+        {emblem && (
+          <img
+            src={`/api/teams/${encodeURIComponent(emblem)}/logo`}
+            alt=""
+            aria-hidden="true"
+            className="hero-emblem pointer-events-none absolute -right-10 -top-12 w-56 select-none sm:-right-6 sm:-top-16 sm:w-80"
+            onError={(e) => {
+              e.currentTarget.hidden = true;
+            }}
+          />
         )}
         <div
           aria-hidden="true"

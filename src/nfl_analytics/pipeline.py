@@ -26,8 +26,9 @@ from typing import Any
 
 from nfl_analytics.build import build_database
 from nfl_analytics.config import Settings
-from nfl_analytics.datasets import plan_files
-from nfl_analytics.download import fetch_all, missing_from_cache
+from nfl_analytics.datasets import FileSpec, get_dataset, plan_files
+from nfl_analytics.download import cache_path, fetch_all, missing_from_cache
+from nfl_analytics.logos import refresh_logos
 
 log = logging.getLogger(__name__)
 
@@ -116,6 +117,18 @@ def run(settings: Settings, mode: Mode, *, lock_wait_seconds: float = 3 * 3600) 
             status["files"] = dict(counts)
             status["bytes_downloaded"] = sum(r.bytes for r in results)
             log.info("Downloads: %s", dict(counts))
+
+            # Logos are cosmetic: record problems, never fail the data refresh.
+            try:
+                logos = refresh_logos(
+                    settings.data_dir,
+                    cache_path(settings.cache_dir, FileSpec(get_dataset("teams"), None)),
+                    only_missing=mode is Mode.DAILY,
+                )
+                status["logos"] = logos.as_status()
+            except Exception as exc:
+                log.exception("Logo refresh failed")
+                status["logos"] = {"error": f"{type(exc).__name__}: {exc}"}
 
             report = build_database(settings)
             status.update(
