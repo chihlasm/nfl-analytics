@@ -31,7 +31,13 @@ def rows(client: TestClient, query: str) -> list[tuple[int, str, float, int]]:
 
 def test_catalog_lists_every_stat(client: TestClient) -> None:
     body = client.get("/api/stats").json()
-    assert [s["key"] for s in body["stats"]] == [s.key for s in STATS]
+    box = [s for s in body["stats"] if s["kind"] == "stat"]
+    advanced = {s["key"]: s for s in body["stats"] if s["kind"] == "metric"}
+    assert [s["key"] for s in box] == [s.key for s in STATS]
+    # Advanced stats come from sql/metrics.sql, with FTN credit where charting is used.
+    assert advanced["short_throw_misses"]["credit"] == "FTN Data via nflverse"
+    assert advanced["short_throw_miss_rate"]["per_game"] is False
+    assert advanced["epa_per_dropback"]["credit"] is None
     assert body["position_groups"] == ["QB", "RB", "WR", "TE", "DL", "LB", "DB"]
 
 

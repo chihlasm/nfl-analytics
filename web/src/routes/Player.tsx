@@ -5,6 +5,7 @@ import { Link, useParams } from "react-router";
 import { Notice, Skeleton, errorText } from "../components/Notice";
 import { DepthBars, ThrowMap } from "../components/QbPanels";
 import { SeasonChart } from "../components/SeasonChart";
+import { StatTap } from "../components/StatTap";
 import { TeamLink, TeamMark } from "../components/TeamMark";
 import { ChipRow, HeroFrame, Panel, Ring, Segmented, Stat, type Option } from "../components/ui";
 import { ApiError, type MetricValue, type PlayerProfile, type StatColumn } from "../lib/api";
@@ -150,9 +151,10 @@ function Hero({ profile }: { profile: PlayerProfile }) {
 
   const cmp = profile.totals.completions;
   const att = profile.totals.attempts;
-  const tiles: Array<{ label: string; value: string }> = stats.slice(0, att ? 3 : 4).map((c) => ({
+  const tiles: Array<{ label: string; value: string; stat?: string }> = stats.slice(0, att ? 3 : 4).map((c) => ({
     label: c.label,
     value: num((profile.totals[c.key] ?? 0) * t, c.decimals),
+    stat: profile.totals[c.key] ? c.key : undefined,
   }));
   if (att) tiles.push({ label: "Completion", value: `${(((cmp ?? 0) / att) * 100 * t).toFixed(1)}%` });
 
@@ -193,15 +195,29 @@ function Hero({ profile }: { profile: PlayerProfile }) {
           {profile.season != null && tiles.length > 0 && (
             <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-2.5">
               {tiles.map((tile, i) => (
-                <Stat key={tile.label} value={tile.value} label={tile.label} accent={i === 0} />
+                <StatTap
+                  key={tile.label}
+                  variant="block"
+                  target={tile.stat ? { player: player.player_id, stat: tile.stat, season: profile.season ?? undefined } : null}
+                  label={`${tile.label}: see the plays`}
+                >
+                  <Stat value={tile.value} label={tile.label} accent={i === 0} />
+                </StatTap>
               ))}
             </div>
           )}
         </div>
         {rings.length > 0 && (
           <div className="grid grid-cols-3 gap-2 self-center sm:gap-3">
-            {rings.map((r, i) => (
-              <Ring key={r.label} {...r} delay={0.25 + i * 0.15} size={88} />
+            {rings.map(({ metric, ...r }, i) => (
+              <StatTap
+                key={r.label}
+                variant="block"
+                target={profile.season != null ? { player: player.player_id, stat: metric, season: profile.season } : null}
+                label={`${r.label}: see the plays`}
+              >
+                <Ring {...r} delay={0.25 + i * 0.15} size={88} />
+              </StatTap>
             ))}
           </div>
         )}
@@ -213,10 +229,11 @@ function Hero({ profile }: { profile: PlayerProfile }) {
 /** The three QB accuracy rings, from the saved metrics (empty for other positions). */
 function qbRings(metrics: MetricValue[]) {
   const m = new Map(metrics.map((x) => [x.name, x]));
-  const out: Array<{ share: number; value: string; label: string; sub?: string; from?: string; to?: string }> = [];
+  const out: Array<{ metric: string; share: number; value: string; label: string; sub?: string; from?: string; to?: string }> = [];
   const catchable = m.get("catchable_ball_rate");
   if (catchable?.value != null) {
     out.push({
+      metric: "catchable_ball_rate",
       share: catchable.value,
       value: pct(catchable.value),
       label: "Catchable",
@@ -227,6 +244,7 @@ function qbRings(metrics: MetricValue[]) {
   const rate = m.get("short_throw_miss_rate");
   if (misses?.value != null) {
     out.push({
+      metric: "short_throw_misses",
       share: rate?.value ?? 0,
       value: num(misses.value),
       label: "Short misses",
@@ -238,6 +256,7 @@ function qbRings(metrics: MetricValue[]) {
   const epa = m.get("epa_per_dropback");
   if (epa?.value != null) {
     out.push({
+      metric: "epa_per_dropback",
       share: (epa.value + 0.5) / 1,
       value: `${epa.value > 0 ? "+" : epa.value < 0 ? "−" : ""}${Math.abs(epa.value).toFixed(2)}`,
       label: "EPA / dropback",

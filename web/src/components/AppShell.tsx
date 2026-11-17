@@ -2,6 +2,8 @@ import { ChartNoAxesColumn, House, Search, Settings as SettingsIcon, Shield, Use
 import { useId, useState, type FormEvent } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router";
 
+import { PlaysSheet } from "./PlaysSheet";
+
 interface Destination {
   to: string;
   label: string;
@@ -116,6 +118,7 @@ export function AppShell() {
         <Outlet />
         <Credits className="mt-10" />
       </main>
+      <PlaysSheet />
 
       {/* Phone tab bar: a floating glass pill above the home indicator */}
       <nav

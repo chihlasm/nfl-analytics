@@ -261,8 +261,14 @@ class StatInfo(BaseModel):
     key: str
     label: str
     short: str
-    group: str  # passing | rushing | receiving | defense
+    group: str  # passing | rushing | receiving | defense | advanced
     decimals: int
+    kind: str = "stat"  # stat (box score) | metric (sql/metrics.sql)
+    unit: str = "count"  # count | rate (0-1, shown as %) | epa | yards
+    description: str | None = None
+    first_season: int | None = None
+    per_game: bool = True  # whether "per game" means anything (not for rates)
+    credit: str | None = None  # data credit to show with it (FTN)
 
 
 class StatCatalog(BaseModel):
@@ -278,8 +284,9 @@ class ExplorerRow(BaseModel):
     position_group: str | None
     team: str | None  # with a team filter: that team; otherwise their latest team
     games: int
-    value: float  # season total
+    value: float  # season total (or the rate/average for metrics)
     per_game: float
+    attempts: int | None = None  # plays behind a rate or average
 
 
 class Explorer(BaseModel):
@@ -296,3 +303,59 @@ class Explorer(BaseModel):
     total: int  # players matching the filters, before paging
     offset: int
     rows: list[ExplorerRow]
+    min_plays: int = 0  # qualifier for rates and averages
+    note: str | None = None  # why there are no rows (data starts later), if so
+
+
+class PlayerRef(BaseModel):
+    player_id: str
+    name: str
+    position: str | None
+    team: str | None
+
+
+class PlayRow(BaseModel):
+    game_id: str
+    play_id: int
+    season_type: str
+    week: int
+    team: str | None  # the offense
+    opponent: str | None  # the other team, from the player's side
+    is_home: bool | None
+    qtr: int | None
+    clock: str | None
+    down: int | None
+    distance: int | None
+    field: str | None  # "ATL 35"
+    description: str | None
+    value: float | None  # what this play adds to the stat
+    epa: float | None
+    air_yards: float | None
+    yards: float | None
+    counted: bool  # for rates: is this play one of the counted ones (a miss)
+    tags: list[str]  # TD, INT, Sack, Fumble, Penalty
+
+
+class PlayWeek(BaseModel):
+    season_type: str
+    week: int
+    plays: int
+    value: float | None
+
+
+class PlayList(BaseModel):
+    stat: StatInfo
+    player: PlayerRef
+    season: int
+    season_type: str
+    week: int | None
+    team: str | None
+    sort: str  # time | value
+    counted_only: bool
+    value: float | None  # the stat over the filtered plays
+    official: float | None  # nflverse box-score total for the same scope (stats only)
+    plays: int  # plays listed in total (before paging)
+    counted: int  # plays that count (equals plays except for rates)
+    weeks: list[PlayWeek]  # the whole scope by week, for the week picker and chart
+    offset: int
+    rows: list[PlayRow]

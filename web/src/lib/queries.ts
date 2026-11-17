@@ -4,7 +4,7 @@
  */
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
-import { api, type Explorer, type ExplorerOrder, type ExplorerSort, type Injuries, type Meta, type SeasonType, type StatCatalog, type News, type PlayerProfile, type PlayerSummary, type Standings, type TeamProfile, type Week } from "./api";
+import { api, type Explorer, type ExplorerOrder, type ExplorerSort, type Injuries, type Meta, type PlayList, type PlaySort, type SeasonType, type StatCatalog, type News, type PlayerProfile, type PlayerSummary, type Standings, type TeamProfile, type Week } from "./api";
 
 const HOUR = 60 * 60 * 1000;
 
@@ -90,6 +90,7 @@ export function useStatCatalog() {
 /** A type alias (not an interface) so it passes straight through as query params. */
 export type ExplorerFilters = {
   stat: string;
+  min_plays?: number;
   season?: number;
   season_type?: SeasonType;
   position?: string;
@@ -121,6 +122,35 @@ export function useExplorer(filters: ExplorerFilters) {
       const next = last.offset + last.rows.length;
       return next < last.total && last.rows.length > 0 ? next : undefined;
     },
+    staleTime: HOUR,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** What the plays panel is showing (also its address-bar state). */
+export type PlaysQuery = {
+  player: string;
+  stat: string;
+  season?: number;
+  season_type?: SeasonType;
+  week?: number;
+  team?: string;
+  sort?: PlaySort;
+  counted_only?: string;
+};
+
+export const PLAYS_PAGE = 50;
+
+export function usePlays(q: PlaysQuery | null) {
+  return useInfiniteQuery({
+    queryKey: ["plays", q],
+    queryFn: ({ pageParam }) => api<PlayList>("/api/plays", { ...(q as PlaysQuery), limit: PLAYS_PAGE, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (last) => {
+      const next = last.offset + last.rows.length;
+      return next < last.plays && last.rows.length > 0 ? next : undefined;
+    },
+    enabled: q !== null,
     staleTime: HOUR,
     placeholderData: keepPreviousData,
   });
