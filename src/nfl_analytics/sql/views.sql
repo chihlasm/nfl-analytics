@@ -246,3 +246,21 @@ SELECT
     i.practice_status,
     i.practice_primary_injury
 FROM raw_injuries AS i;
+-- ;;
+
+-- ---------------------------------------------------------------------------
+-- teams: one row per current team abbreviation, as nflverse uses them.
+-- The nflverse file also lists historical abbreviations (OAK, SD, STL, LAR);
+-- logo_url is the official ESPN logo the ingest job caches locally.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE VIEW teams AS
+SELECT
+    team_abbr          AS team,
+    team_name          AS name,
+    team_nick          AS nickname,
+    team_conf          AS conference,
+    team_division      AS division,
+    team_color         AS color_primary,
+    team_color2        AS color_secondary,
+    team_logo_espn     AS logo_url
+FROM raw_teams;

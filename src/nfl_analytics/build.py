@@ -38,6 +38,7 @@ CORE_VIEWS = (
     "players",
     "player_weeks",
     "injury_reports",
+    "teams",
 )
 
 

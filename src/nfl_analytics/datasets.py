@@ -115,6 +115,13 @@ DATASETS: tuple[Dataset, ...] = (
         description="Every game: date, score, betting lines, weather, starting QBs.",
     ),
     Dataset(
+        name="teams",
+        table="raw_teams",
+        release_tag="teams",
+        file_pattern="teams_colors_logos.parquet",
+        description="Every team: names, division, colours and logo links.",
+    ),
+    Dataset(
         name="ngs_passing",
         table="raw_ngs_passing",
         release_tag="nextgen_stats",

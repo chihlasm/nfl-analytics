@@ -201,6 +201,23 @@ def write_fixture_cache(cache: Path) -> None:
     )
     _write(
         con,
+        """
+        SELECT * FROM (VALUES
+            ('ATL', 'Atlanta Falcons', 'Falcons', 'NFC', 'NFC South', '#A71930', '#000000',
+             'https://a.espncdn.com/i/teamlogos/nfl/500/atl.png'),
+            ('BAL', 'Baltimore Ravens', 'Ravens', 'AFC', 'AFC North', '#241773', '#000000',
+             'https://a.espncdn.com/i/teamlogos/nfl/500/bal.png'),
+            ('OAK', 'Oakland Raiders', 'Raiders', 'AFC', 'AFC West', '#000000', '#A5ACAF',
+             'https://a.espncdn.com/i/teamlogos/nfl/500/oak.png'),
+            ('BAD', 'Bad Host', 'Bad', 'AFC', 'AFC West', '#000000', '#000000',
+             'http://evil.example/logo.png')
+        ) t(team_abbr, team_name, team_nick, team_conf, team_division, team_color,
+            team_color2, team_logo_espn)
+    """,
+        cache / "teams" / "teams_colors_logos.parquet",
+    )
+    _write(
+        con,
         f"""
         SELECT '{QB}' AS player_gsis_id, {SEASON} AS season, w AS week, 2.6 AS avg_time_to_throw,
                14.0 AS aggressiveness, 7.9 AS avg_intended_air_yards,

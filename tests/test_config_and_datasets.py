@@ -67,4 +67,4 @@ def test_plan_daily_is_current_season_plus_all_season_files() -> None:
     files = list(plan_files(1999, 2026, current_only=True))
     seasons = {f.season for f in files}
     assert seasons == {2026, None}
-    assert len([f for f in files if f.season is None]) == 5
+    assert len([f for f in files if f.season is None]) == 6

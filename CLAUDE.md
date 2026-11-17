@@ -44,6 +44,10 @@ injuries), player search and player pages. Next in 3b: Team pages, Explorer.
   - Motion: `rise`, `grow-up`, `ring-in`, count-up (`useCountUp`); all honour
     prefers-reduced-motion.
 - TypeScript types in `web/src/lib/api.ts` mirror `api/models.py`; change both together.
+- Team logos: ingest caches them (`logos.py`, ESPN CDN links from the nflverse teams
+  file, PNG-checked, size-capped) into `data/logos/`; the API serves
+  `/api/teams/{ABBR}/logo`; `TeamMark` shows them and falls back to the two-tone disc.
+  Logos are NFL trademarks: private, personal use only.
 - Charts are hand-written SVG (`SeasonChart`, `QbPanels`, rings); no chart library.
 - Copy: plain, sentence case, active voice; errors say what happened and what to do.
 - Check: `cd web && npm run build` (typecheck + build).

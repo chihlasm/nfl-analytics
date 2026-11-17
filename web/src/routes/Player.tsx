@@ -159,7 +159,7 @@ function Hero({ profile }: { profile: PlayerProfile }) {
   const rings = qbRings(profile.metrics);
 
   return (
-    <HeroFrame watermark={surname(player.display_name)}>
+    <HeroFrame watermark={surname(player.display_name)} emblem={abbr}>
       <div className={`grid gap-7 ${rings.length ? "lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]" : ""}`}>
         <div className="flex flex-col gap-3.5">
           <div className="flex items-center gap-2.5">

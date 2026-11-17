@@ -94,12 +94,12 @@ function Ticker({ games }: { games: Game[] }) {
     const hw = g.is_final && (g.home.score ?? 0) > (g.away.score ?? 0);
     return (
       <span key={g.game_id} className="inline-flex items-center gap-2 whitespace-nowrap border-r border-white/[0.07] px-5 py-2 text-[0.8125rem] font-semibold text-gray-300">
-        <TeamMark abbr={g.away.team} size={9} />
+        <TeamMark abbr={g.away.team} size={11} />
         <span className={aw ? "font-extrabold text-white" : ""}>
           {g.away.team} {g.away.score ?? ""}
         </span>
         <span className="text-gray-600">·</span>
-        <TeamMark abbr={g.home.team} size={9} />
+        <TeamMark abbr={g.home.team} size={11} />
         <span className={hw ? "font-extrabold text-white" : ""}>
           {g.home.team} {g.home.score ?? ""}
         </span>
@@ -172,7 +172,7 @@ function Facts({ games }: { games: Game[] }) {
             {f.teams.length > 0 && (
               <span className="mt-1 flex shrink-0 gap-1">
                 {f.teams.map((t) => (
-                  <TeamMark key={t} abbr={t} size={9} />
+                  <TeamMark key={t} abbr={t} size={11} />
                 ))}
               </span>
             )}
