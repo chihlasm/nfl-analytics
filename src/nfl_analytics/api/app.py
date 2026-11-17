@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from nfl_analytics import __version__
 from nfl_analytics.api import models as m
-from nfl_analytics.api import queries
+from nfl_analytics.api import queries, teams
 from nfl_analytics.api.db import Database, DatabaseUnavailable
 from nfl_analytics.api.news import NewsCache, news_from_env
 from nfl_analytics.config import Settings
@@ -111,6 +111,17 @@ def create_app(
         profile = queries.player_profile(cur, player_id, season)
         if profile is None:
             raise HTTPException(status_code=404, detail="No player with that ID.")
+        return profile
+
+    @app.get("/api/teams", response_model=m.Standings)
+    def get_teams(cur: Cur, season: Season = None) -> m.Standings:
+        return teams.standings(cur, season_or_current(cur, season))
+
+    @app.get("/api/teams/{team}", response_model=m.TeamProfile)
+    def get_team(cur: Cur, team: str, season: Season = None) -> m.TeamProfile:
+        profile = teams.team_profile(cur, team, season)
+        if profile is None:
+            raise HTTPException(status_code=404, detail="No team with that code.")
         return profile
 
     @app.get("/api/teams/{team}/logo", response_class=FileResponse)

@@ -177,3 +177,87 @@ class News(BaseModel):
     fetched_at: datetime | None
     sources_ok: list[str]
     sources_failed: list[str]
+
+
+class TeamInfo(BaseModel):
+    team: str
+    name: str
+    nickname: str | None
+    conference: str | None
+    division: str | None
+
+
+class TeamRecord(BaseModel):
+    wins: int
+    losses: int
+    ties: int
+    points_for: int
+    points_against: int
+    home: str  # "W-L" or "W-L-T"
+    away: str
+    division: str
+    streak: str | None  # "W3", "L1"
+
+
+class StandingRow(BaseModel):
+    """One team in a table. Sorted by win percentage, then point difference
+    (a simple order, not the NFL's official tiebreakers)."""
+
+    info: TeamInfo
+    record: TeamRecord
+
+
+class Standings(BaseModel):
+    season: int
+    seasons: list[int]
+    # Division alignment from 2002 on; earlier seasons show conference tables only
+    # when the conferences match, so we flag whether divisions apply.
+    divisions_apply: bool
+    teams: list[StandingRow]
+
+
+class TeamGame(BaseModel):
+    game_id: str
+    week: int
+    game_type: str
+    game_date: date | None
+    kickoff_time_et: str | None
+    opponent: str
+    is_home: bool
+    points_for: int | None
+    points_against: int | None
+    result: str | None  # W | L | T, None if not played yet
+    is_overtime: bool
+    is_division_game: bool
+    team_line: float | None  # negative = favoured
+    total_line: float | None
+    qb_name: str | None
+    opponent_qb_name: str | None
+
+
+class TeamRank(BaseModel):
+    """A team stat with its league rank (1 = best)."""
+
+    key: str
+    label: str
+    side: str  # offense | defense
+    value: float | None
+    rank: int | None
+    teams: int
+    league_avg: float | None
+    decimals: int
+    unit: str  # "" | "%" | "yds" | "pts"
+
+
+class TeamProfile(BaseModel):
+    info: TeamInfo
+    season: int
+    seasons: list[int]
+    record: TeamRecord
+    division_rank: int | None
+    division: list[StandingRow]
+    games: list[TeamGame]
+    ranks: list[TeamRank]
+    leaders: list[LeaderBoard]
+    injury_week: int | None
+    injuries: list[InjuryRow]

@@ -211,3 +211,83 @@ export interface News {
   sources_ok: string[];
   sources_failed: string[];
 }
+
+export interface TeamInfo {
+  team: string;
+  name: string;
+  nickname: string | null;
+  conference: string | null;
+  division: string | null;
+}
+
+export interface TeamRecord {
+  wins: number;
+  losses: number;
+  ties: number;
+  points_for: number;
+  points_against: number;
+  home: string;
+  away: string;
+  division: string;
+  streak: string | null;
+}
+
+export interface StandingRow {
+  info: TeamInfo;
+  record: TeamRecord;
+}
+
+export interface Standings {
+  season: number;
+  seasons: number[];
+  divisions_apply: boolean;
+  teams: StandingRow[];
+}
+
+export type GameResult = "W" | "L" | "T";
+
+export interface TeamGame {
+  game_id: string;
+  week: number;
+  game_type: string;
+  game_date: string | null;
+  kickoff_time_et: string | null;
+  opponent: string;
+  is_home: boolean;
+  points_for: number | null;
+  points_against: number | null;
+  result: GameResult | null;
+  is_overtime: boolean;
+  is_division_game: boolean;
+  /** Spread from this team's side: negative means favoured. */
+  team_line: number | null;
+  total_line: number | null;
+  qb_name: string | null;
+  opponent_qb_name: string | null;
+}
+
+export interface TeamRank {
+  key: string;
+  label: string;
+  side: "offense" | "defense";
+  value: number | null;
+  rank: number | null;
+  teams: number;
+  league_avg: number | null;
+  decimals: number;
+  unit: "" | "%" | "yds" | "pts";
+}
+
+export interface TeamProfile {
+  info: TeamInfo;
+  season: number;
+  seasons: number[];
+  record: TeamRecord;
+  division_rank: number | null;
+  division: StandingRow[];
+  games: TeamGame[];
+  ranks: TeamRank[];
+  leaders: LeaderBoard[];
+  injury_week: number | null;
+  injuries: InjuryRow[];
+}

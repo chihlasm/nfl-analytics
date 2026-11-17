@@ -64,3 +64,25 @@ export function weekLabel(week: number, seasonType = "REG", season?: number): st
   const rounds = ["Wild Card", "Divisional", "Conference", "Super Bowl"];
   return rounds[week - first] ?? `Week ${week}`;
 }
+
+/** 1 -> "1st", 22 -> "22nd", 13 -> "13th" */
+export function ordinal(n: number): string {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+}
+
+/** "3-7" or "8-8-1" */
+export function wlt(w: number, l: number, t: number): string {
+  return t ? `${w}-${l}-${t}` : `${w}-${l}`;
+}
+
+/** Win percentage with ties as half a win, ".538" style. */
+export function winPct(w: number, l: number, t: number): number {
+  const games = w + l + t;
+  return games ? (w + 0.5 * t) / games : 0;
+}
+
+export function pctText(p: number): string {
+  return p >= 1 ? "1.000" : p.toFixed(3).replace(/^0/, "");
+}

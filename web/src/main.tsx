@@ -14,6 +14,8 @@ import { Home } from "./routes/Home";
 const screens = {
   players: () => import("./routes/Players").then((m) => ({ Component: m.Players })),
   player: () => import("./routes/Player").then((m) => ({ Component: m.Player })),
+  teams: () => import("./routes/Teams").then((m) => ({ Component: m.Teams })),
+  team: () => import("./routes/Team").then((m) => ({ Component: m.Team })),
   settings: () => import("./routes/Settings").then((m) => ({ Component: m.Settings })),
 };
 
@@ -54,6 +56,8 @@ const router = createBrowserRouter([
       { index: true, element: <Home /> },
       { path: "players", lazy: screens.players },
       { path: "players/:id", lazy: screens.player },
+      { path: "teams", lazy: screens.teams },
+      { path: "teams/:abbr", lazy: screens.team },
       { path: "settings", lazy: screens.settings },
       { path: "*", element: <NotFound /> },
     ],

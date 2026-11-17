@@ -24,7 +24,11 @@
 
 Phase 3a (done, ahead of Phase 2 at Michael's request): `api` service
 (`src/nfl_analytics/api`) and `web/` dashboard with Home (scores, headlines, leaders,
-injuries), player search and player pages. Next in 3b: Team pages, Explorer.
+injuries), player search and player pages.
+Phase 3b so far: Teams (standings by division/conference/league) and Team pages (schedule
+with byes, game-by-game margins, league ranks, division table, injuries, leaders).
+`TeamLink` makes team names open their page; never nest it inside another link.
+Next in 3b: Explorer.
 
 ## Frontend (web/)
 - Stack (same as WePlan): React 19, react-router 8, TanStack Query 5, Tailwind v4, Vite,
@@ -57,7 +61,11 @@ injuries), player search and player pages. Next in 3b: Team pages, Explorer.
   atomically replaces `nfl.duckdb`. Every other service opens the DB read-only and
   should reopen it when the file changes (check mtime per request or on a timer).
 - Downstream code queries VIEWS (`plays`, `dropbacks`, `targets`, `games`, `players`,
-  `player_weeks`), never `raw_*` tables.
+  `player_weeks`, `teams`, `team_games`, `team_weeks`), never `raw_*` tables.
+  `team_games` has each game once per team (team_line: negative = favoured);
+  `team_weeks` has per-game offense and defense totals over scrimmage plays.
+- Divisions and conferences apply from 2002 (realignment); earlier seasons show
+  league tables only.
 - Metric logic lives ONLY in `sql/metrics.sql` (`metric_definitions`) and is executed
   ONLY through `nfl_analytics.metrics`. Add a metric there, not in an endpoint.
 - User input is always a bound parameter. Never format user values into SQL.

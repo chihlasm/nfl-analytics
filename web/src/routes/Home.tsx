@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 
 import { Notice, QueryState } from "../components/Notice";
-import { TeamMark } from "../components/TeamMark";
+import { TeamLink, TeamMark } from "../components/TeamMark";
 import { ChipRow, Panel, Segmented, type Option } from "../components/ui";
 import type { Game, InjuryStatus, LeaderRow, NewsItem } from "../lib/api";
 import { ago, kickoff, num, shortDate, weekLabel } from "../lib/format";
@@ -263,16 +263,22 @@ function GameCard({ game: g }: { game: Game }) {
         [g.away, aw],
         [g.home, hw],
       ] as const).map(([side, won]) => (
-        <div key={side.team} className="relative flex items-center gap-2.5" aria-hidden="true">
-          <TeamMark abbr={side.team} size={16} />
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className={`num truncate text-[1.5rem] leading-none ${won || !g.is_final ? "text-white" : "text-muted"}`}>
-              {team(side.team)?.short ?? side.team}
+        <div key={side.team} className="relative flex items-center gap-2.5">
+          <TeamLink abbr={side.team} season={g.season} className="flex min-w-0 flex-1 items-center gap-2.5">
+            <TeamMark abbr={side.team} size={16} />
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className={`num truncate text-[1.5rem] leading-none ${won || !g.is_final ? "text-white" : "text-muted"}`}>
+                {team(side.team)?.short ?? side.team}
+              </span>
+              {side.qb_name && (
+                <span className="truncate text-xs text-faint" aria-hidden="true">
+                  {side.qb_name}
+                </span>
+              )}
             </span>
-            {side.qb_name && <span className="truncate text-xs text-faint">{side.qb_name}</span>}
-          </span>
+          </TeamLink>
           {side.score != null && (
-            <span className={`num text-[2.5rem] leading-[0.9] ${won ? "text-white" : "text-faint"}`} style={won ? { textShadow: "0 0 18px rgba(255,255,255,0.35)" } : undefined}>
+            <span aria-hidden="true" className={`num text-[2.5rem] leading-[0.9] ${won ? "text-white" : "text-faint"}`} style={won ? { textShadow: "0 0 18px rgba(255,255,255,0.35)" } : undefined}>
               {side.score}
             </span>
           )}
@@ -298,17 +304,17 @@ function GameRow({ game: g }: { game: Game }) {
       }}
     >
       <span className="hidden text-[0.6875rem] font-bold uppercase tracking-[0.08em] text-muted sm:block">{shortDate(g.game_date)}</span>
-      <span className="flex items-center justify-end gap-2">
+      <TeamLink abbr={g.away.team} season={g.season} className="flex min-w-0 items-center justify-end gap-2">
         <span className={`num truncate text-[1.25rem] ${aw || !g.is_final ? "text-white" : "text-muted"}`}>{team(g.away.team)?.short ?? g.away.team}</span>
         <TeamMark abbr={g.away.team} size={14} />
-      </span>
+      </TeamLink>
       <span className="num text-center text-[1.5rem] text-white">
         {g.is_final ? `${g.away.score}–${g.home.score}` : kickoff(g.kickoff_time_et).replace(" ET", "")}
       </span>
-      <span className="flex items-center gap-2">
+      <TeamLink abbr={g.home.team} season={g.season} className="flex min-w-0 items-center gap-2">
         <TeamMark abbr={g.home.team} size={14} />
         <span className={`num truncate text-[1.25rem] ${hw || !g.is_final ? "text-white" : "text-muted"}`}>{team(g.home.team)?.short ?? g.home.team}</span>
-      </span>
+      </TeamLink>
       <span className={`hidden text-right text-[0.6875rem] font-extrabold uppercase tracking-[0.1em] sm:block ${g.is_final ? "text-muted" : "text-[var(--tb)]"}`}>
         {g.is_final ? status(g) : "Upcoming"}
       </span>
@@ -507,7 +513,9 @@ function Injuries({ season }: { season: number | undefined }) {
           <ul className="flex flex-col">
             {visible.map((r) => (
               <li key={`${r.team}-${r.player_name}`} className="flex items-center gap-3 border-b border-white/[0.06] py-2.5 last:border-b-0">
-                <TeamMark abbr={r.team} size={12} />
+                <TeamLink abbr={r.team} season={season} className="shrink-0" label={`${team(r.team)?.name ?? r.team} team page`}>
+                  <TeamMark abbr={r.team} size={12} />
+                </TeamLink>
                 <span className="flex min-w-0 flex-1 flex-col">
                   {r.player_id ? (
                     <Link to={`/players/${r.player_id}`} className="truncate font-bold hover:underline hover:underline-offset-4">
