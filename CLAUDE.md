@@ -99,6 +99,13 @@ Phase 3 is complete. Next: Phase 2, the MCP connector.
   before shipping a rule change. New team stats go in `api/team_stats.py` only.
 - User input is always a bound parameter. Never format user values into SQL.
 - SQL files separate statements with a line containing only `-- ;;`.
+- Freshness: ingest checks nflverse on `NFL_CHECK_CRONS` (default every 15 min on game
+  days, hourly otherwise) and rebuilds only when a file changed (`pipeline.run`; busy checks
+  skip without touching status.json). Live scores come from ESPN's scoreboard in
+  `api/live.py` (in memory, like news; adaptive polling; stale after 10 min; nflverse finals
+  always win; matched on teams + Eastern date; ESPN codes WSH/LAR map to WAS/LA) and are
+  overlaid on `GET /api/games` as `Game.live`. The home page polls every 30 s while a game
+  is on (`useWeek`).
 
 ## Conventions
 - Python 3.12, type hints everywhere, `mypy --strict` clean, ruff lint + format.

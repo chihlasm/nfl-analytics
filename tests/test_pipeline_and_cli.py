@@ -135,3 +135,63 @@ def test_unwritable_data_dir_fails_fast_with_fix(
     assert cli.main(["schedule", "--no-initial-run"]) == 1
     assert "sudo chown" in caplog.text
     assert "Permission denied" in caplog.text
+
+
+def test_check_with_nothing_new_keeps_the_database(
+    fixture_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unchanged(specs, cache_dir, **_kw):  # type: ignore[no-untyped-def]
+        return [FileResult(s, Outcome.UNCHANGED, None) for s in specs]
+
+    monkeypatch.setattr(pipeline, "fetch_all", unchanged)
+    first = run(fixture_settings, Mode.DAILY)
+    assert first["rebuilt"] is True  # no database yet
+    built = fixture_settings.db_path.stat().st_mtime_ns
+
+    second = run(fixture_settings, Mode.DAILY)
+    assert second["ok"] is True and second["rebuilt"] is False
+    assert second["latest_week"] == first["latest_week"]
+    assert second["data_changed_at"] == first["data_changed_at"]
+    assert fixture_settings.db_path.stat().st_mtime_ns == built  # untouched
+
+    assert run(fixture_settings, Mode.DAILY, force_build=True)["rebuilt"] is True
+
+
+def test_check_with_a_new_file_rebuilds(
+    fixture_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    outcome = {"value": Outcome.UNCHANGED}
+
+    def fake(specs, cache_dir, **_kw):  # type: ignore[no-untyped-def]
+        return [FileResult(s, outcome["value"], None) for s in specs]
+
+    monkeypatch.setattr(pipeline, "fetch_all", fake)
+    run(fixture_settings, Mode.DAILY)
+    outcome["value"] = Outcome.DOWNLOADED
+    assert run(fixture_settings, Mode.DAILY)["rebuilt"] is True
+
+
+def test_busy_check_skips_without_touching_status(
+    fixture_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(pipeline, "fetch_all", lambda specs, *a, **k: [])
+    run(fixture_settings, Mode.DAILY)
+    before = fixture_settings.status_path.read_text()
+    with pipeline_lock(fixture_settings.lock_path, wait_seconds=0), pytest.raises(PipelineBusy):
+        run(fixture_settings, Mode.DAILY, lock_wait_seconds=0)
+    assert fixture_settings.status_path.read_text() == before  # still healthy
+
+
+def test_check_schedules_parse(monkeypatch: pytest.MonkeyPatch) -> None:
+    from apscheduler.triggers.cron import CronTrigger
+
+    from nfl_analytics.config import DEFAULT_CHECK_CRONS
+
+    for expr in DEFAULT_CHECK_CRONS:
+        CronTrigger.from_crontab(expr, timezone="America/New_York")
+    monkeypatch.setenv("NFL_CHECK_CRONS", "*/10 * * * sun; 0 9 * * *")
+    assert Settings.from_env().check_crons == ("*/10 * * * sun", "0 9 * * *")
+    monkeypatch.setenv("NFL_LIVE_SCORES_URL", "")
+    assert Settings.from_env().live_scores_url.startswith("https://")  # blank = default
+    monkeypatch.setenv("NFL_LIVE_SCORES_URL", "off")
+    assert Settings.from_env().live_scores_url == ""

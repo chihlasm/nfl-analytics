@@ -24,10 +24,10 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from nfl_analytics.build import build_database
+from nfl_analytics.build import build_database, live_sql_fingerprint, sql_fingerprint
 from nfl_analytics.config import Settings
 from nfl_analytics.datasets import FileSpec, get_dataset, plan_files
-from nfl_analytics.download import cache_path, fetch_all, missing_from_cache
+from nfl_analytics.download import Outcome, cache_path, fetch_all, missing_from_cache
 from nfl_analytics.logos import refresh_logos
 
 log = logging.getLogger(__name__)
@@ -83,62 +83,92 @@ def read_status(settings: Settings) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
-def run(settings: Settings, mode: Mode, *, lock_wait_seconds: float = 3 * 3600) -> dict[str, Any]:
-    """Run the pipeline once. Returns the status dict (also written to status.json)."""
+def run(
+    settings: Settings,
+    mode: Mode,
+    *,
+    lock_wait_seconds: float = 3 * 3600,
+    force_build: bool = False,
+) -> dict[str, Any]:
+    """Run the pipeline once. Returns the status dict (also written to status.json).
+
+    When no file changed and the database is current, the rebuild is skipped, so
+    frequent checks cost a few conditional requests. Raises PipelineBusy, without
+    touching status.json, if another run holds the lock past `lock_wait_seconds`
+    (that run reports its own result).
+    """
+    with pipeline_lock(settings.lock_path, wait_seconds=lock_wait_seconds):
+        return _run_locked(settings, mode, force_build=force_build)
+
+
+def _run_locked(settings: Settings, mode: Mode, *, force_build: bool) -> dict[str, Any]:
     status: dict[str, Any] = {"mode": mode.value, "started_at": _now(), "ok": False}
     started = time.monotonic()
     previous = read_status(settings) or {}
-
     try:
-        with pipeline_lock(settings.lock_path, wait_seconds=lock_wait_seconds):
-            all_files = list(
-                plan_files(settings.first_season, settings.current_season, current_only=False)
-            )
-            if mode is Mode.FULL:
-                to_fetch = all_files
-            else:
-                wanted = {
-                    s.label
-                    for s in plan_files(
-                        settings.first_season, settings.current_season, current_only=True
-                    )
-                }
-                wanted |= {s.label for s in missing_from_cache(all_files, settings.cache_dir)}
-                to_fetch = [s for s in all_files if s.label in wanted]
-
-            log.info("%s refresh: checking %d file(s)", mode.value, len(to_fetch))
-            results = fetch_all(
-                to_fetch,
-                settings.cache_dir,
-                current_season=settings.current_season,
-                workers=settings.download_workers,
-            )
-            counts = Counter(r.outcome.value for r in results)
-            status["files"] = dict(counts)
-            status["bytes_downloaded"] = sum(r.bytes for r in results)
-            log.info("Downloads: %s", dict(counts))
-
-            # Logos are cosmetic: record problems, never fail the data refresh.
-            try:
-                logos = refresh_logos(
-                    settings.data_dir,
-                    cache_path(settings.cache_dir, FileSpec(get_dataset("teams"), None)),
-                    only_missing=mode is Mode.DAILY,
+        all_files = list(
+            plan_files(settings.first_season, settings.current_season, current_only=False)
+        )
+        if mode is Mode.FULL:
+            to_fetch = all_files
+        else:
+            wanted = {
+                s.label
+                for s in plan_files(
+                    settings.first_season, settings.current_season, current_only=True
                 )
-                status["logos"] = logos.as_status()
-            except Exception as exc:
-                log.exception("Logo refresh failed")
-                status["logos"] = {"error": f"{type(exc).__name__}: {exc}"}
+            }
+            wanted |= {s.label for s in missing_from_cache(all_files, settings.cache_dir)}
+            to_fetch = [s for s in all_files if s.label in wanted]
 
+        log.info("%s refresh: checking %d file(s)", mode.value, len(to_fetch))
+        results = fetch_all(
+            to_fetch,
+            settings.cache_dir,
+            current_season=settings.current_season,
+            workers=settings.download_workers,
+        )
+        counts = Counter(r.outcome.value for r in results)
+        status["files"] = dict(counts)
+        status["bytes_downloaded"] = sum(r.bytes for r in results)
+        log.info("Downloads: %s", dict(counts))
+
+        # Logos are cosmetic: record problems, never fail the data refresh.
+        try:
+            logos = refresh_logos(
+                settings.data_dir,
+                cache_path(settings.cache_dir, FileSpec(get_dataset("teams"), None)),
+                only_missing=mode is Mode.DAILY,
+            )
+            status["logos"] = logos.as_status()
+        except Exception as exc:
+            log.exception("Logo refresh failed")
+            status["logos"] = {"error": f"{type(exc).__name__}: {exc}"}
+
+        changed = counts.get(Outcome.DOWNLOADED.value, 0) > 0
+        current = (
+            settings.db_path.exists()
+            and live_sql_fingerprint(settings.db_path) == sql_fingerprint()
+            and bool(previous.get("ok"))
+        )
+        if changed or force_build or not current:
             report = build_database(settings)
             status.update(
                 ok=True,
+                rebuilt=True,
                 latest_season=report.latest_season,
                 latest_week=report.latest_week,
                 build_seconds=round(report.seconds, 1),
                 tables={t.table: t.rows for t in report.tables},
+                data_changed_at=_now(),
             )
-            status["last_success_at"] = _now()
+        else:
+            log.info("Nothing new from nflverse; keeping the current database")
+            carried = ("latest_season", "latest_week", "tables", "data_changed_at")
+            status.update(
+                ok=True, rebuilt=False, **{k: previous[k] for k in carried if k in previous}
+            )
+        status["last_success_at"] = _now()
     except Exception as exc:
         log.exception("Pipeline run failed")
         status["error"] = f"{type(exc).__name__}: {exc}"

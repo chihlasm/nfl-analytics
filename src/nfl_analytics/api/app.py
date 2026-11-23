@@ -20,6 +20,7 @@ from nfl_analytics import __version__
 from nfl_analytics.api import explorer, plays, queries, teams
 from nfl_analytics.api import models as m
 from nfl_analytics.api.db import Database, DatabaseUnavailable
+from nfl_analytics.api.live import LiveScores
 from nfl_analytics.api.news import NewsCache, news_from_env
 from nfl_analytics.config import Settings
 from nfl_analytics.logos import logo_path
@@ -50,17 +51,23 @@ def create_app(
     news: NewsCache | None = None,
     *,
     start_news: bool = True,
+    live: LiveScores | None = None,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     db = Database(settings.db_path)
     news = news or news_from_env()
+    # Tests pass their own; otherwise live scores run alongside the news (and are
+    # off entirely when NFL_LIVE_SCORES_URL is empty).
+    live = live or LiveScores(url=settings.live_scores_url if start_news else "")
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if start_news:
             news.start()
+            live.start()
         yield
         news.stop()
+        live.stop()
 
     app = FastAPI(
         title="NFL Analytics API",
@@ -90,7 +97,8 @@ def create_app(
 
     @app.get("/api/games", response_model=m.Week)
     def get_games(cur: Cur, season: Season = None, week: WeekParam = None) -> m.Week:
-        return queries.week_games(cur, season_or_current(cur, season), week)
+        # Live scores sit on top of the database's games until nflverse has the final.
+        return live.apply(queries.week_games(cur, season_or_current(cur, season), week))
 
     @app.get("/api/stats", response_model=m.StatCatalog)
     def get_stats(cur: Cur) -> m.StatCatalog:

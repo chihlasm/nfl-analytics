@@ -65,6 +65,36 @@ def _env_str(name: str, default: str) -> str:
     return raw or default
 
 
+# When to check nflverse for new data (times in NFL_TIMEZONE). Checks that find
+# nothing new take a few seconds and don't rebuild. nflverse posts final scores and
+# play-by-play within an hour or two of each game, so on game days we look every
+# 15 minutes from noon until 3 AM, and hourly the rest of the week.
+DEFAULT_CHECK_CRONS: tuple[str, ...] = (
+    "*/15 12-23 * * thu,sat,sun,mon",  # game days (Saturdays matter late in the season)
+    "*/15 0-2 * * fri,sun,mon,tue",  # the small hours after a night game
+    "5 * * * *",  # hourly the rest of the time
+)
+# ESPN's public scoreboard: live scores while games are on. Unofficial, so the app
+# treats it as a bonus: if it fails, scores fall back to nflverse's.
+DEFAULT_LIVE_SCORES_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
+
+
+def _live_url(raw: str) -> str:
+    """Blank means the default feed; "off" turns live scores off."""
+    raw = raw.strip()
+    if raw.lower() == "off":
+        return ""
+    return raw or DEFAULT_LIVE_SCORES_URL
+
+
+def _env_list(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    """Semicolon-separated values (cron fields contain commas and spaces)."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    return tuple(part.strip() for part in raw.split(";") if part.strip())
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     data_dir: Path
@@ -75,6 +105,9 @@ class Settings:
     full_refresh_cron: str
     download_workers: int
     log_level: str
+    check_crons: tuple[str, ...] = DEFAULT_CHECK_CRONS
+    live_scores_url: str = DEFAULT_LIVE_SCORES_URL
+    """Empty turns live scores off (NFL_LIVE_SCORES_URL=off)."""
 
     @property
     def cache_dir(self) -> Path:
@@ -119,4 +152,6 @@ class Settings:
             full_refresh_cron=_env_str("NFL_FULL_REFRESH_CRON", "30 6 * * 3"),
             download_workers=workers,
             log_level=_env_str("NFL_LOG_LEVEL", "INFO").upper(),
+            check_crons=_env_list("NFL_CHECK_CRONS", DEFAULT_CHECK_CRONS),
+            live_scores_url=_live_url(os.environ.get("NFL_LIVE_SCORES_URL", "")),
         )

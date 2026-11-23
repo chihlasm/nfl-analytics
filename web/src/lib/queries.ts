@@ -12,11 +12,33 @@ export function useMeta() {
   return useQuery({ queryKey: ["meta"], queryFn: () => api<Meta>("/api/meta"), staleTime: HOUR });
 }
 
+const LIVE_POLL = 30_000;
+const GAME_DAY_POLL = 2 * 60_000;
+const SCORES_STALE = 5 * 60_000;
+
+/** True while any game is on, so the scoreboard keeps itself current. */
+export function hasLiveGame(week: Week | undefined): boolean {
+  return Boolean(week?.games.some((g) => g.live?.state === "in"));
+}
+
+/** A game today that isn't final yet (about to start, or nflverse is catching up). */
+function gameDayPending(week: Week | undefined): boolean {
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  return Boolean(week?.games.some((g) => !g.is_final && g.game_date === today));
+}
+
+/**
+ * A week of games. While a game is on it refetches every 30 seconds (live scores
+ * come from the API's scoreboard feed), every 2 minutes on a game day otherwise,
+ * and only when the tab regains focus the rest of the time. Polling pauses while
+ * the tab is hidden.
+ */
 export function useWeek(season: number | undefined, week: number | undefined) {
   return useQuery({
     queryKey: ["games", season, week],
     queryFn: () => api<Week>("/api/games", { season, week }),
-    staleTime: HOUR,
+    staleTime: (q) => (hasLiveGame(q.state.data) ? LIVE_POLL / 2 : SCORES_STALE),
+    refetchInterval: (q) => (hasLiveGame(q.state.data) ? LIVE_POLL : gameDayPending(q.state.data) ? GAME_DAY_POLL : false),
     placeholderData: keepPreviousData,
   });
 }

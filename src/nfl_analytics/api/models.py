@@ -21,6 +21,23 @@ class TeamScore(BaseModel):
     qb_name: str | None
 
 
+class LiveStatus(BaseModel):
+    """A game in progress (or just finished) from the live scoreboard."""
+
+    state: str  # pre | in | post
+    detail: str  # "7:34 - 2nd", "Halftime", "Final/OT"
+    period: int | None
+    clock: str | None
+    away_score: int | None
+    home_score: int | None
+    possession: str | None  # team with the ball
+    down_distance: str | None  # "3rd & 7 at SF 34"
+    red_zone: bool
+    last_play: str | None
+    is_overtime: bool
+    updated_at: datetime
+
+
 class Game(BaseModel):
     game_id: str
     season: int
@@ -36,6 +53,7 @@ class Game(BaseModel):
     total_line: float | None
     stadium: str | None
     roof: str | None
+    live: LiveStatus | None = None  # set while ESPN has it live or nflverse lags
 
 
 class Week(BaseModel):

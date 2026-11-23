@@ -51,6 +51,19 @@ NFL news RSS feeds ──(every 15 min)─────────────�
 Full build on real data: ~1.3 million plays, about 35 seconds and 3.6 GB peak
 memory. Disk: about 520 MB of cached Parquet plus about 760 MB for the database.
 
+## How fresh the data is
+
+- **Live scores:** while a game is on, the API polls ESPN's public scoreboard every 30
+  seconds (every minute around kickoff, every 15 minutes otherwise) and the home page
+  refreshes itself every 30 seconds. Score cards show the clock, who has the ball, down
+  and distance, and the last play. The feed is unofficial: if it fails or goes quiet for
+  10 minutes, live info disappears and scores fall back to nflverse's. Live scores are
+  held in memory only; the database is still built from nflverse alone.
+- **Everything else** (final scores, play-by-play, stats, injuries) comes from nflverse,
+  which publishes within an hour or two of each game. The ingest service checks every 15
+  minutes on game days (noon to 3 AM) and hourly otherwise, and only rebuilds when a file
+  actually changed. A full re-download still runs weekly.
+
 ## Deploy on docker-01
 
 1. **Clone** onto docker-01 (or point Dockge at the repo):
