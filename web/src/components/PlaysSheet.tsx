@@ -68,7 +68,7 @@ export function PlaysSheet() {
         if (e.target === e.currentTarget) close(); // a tap on the dimmed backdrop
       }}
     >
-      {q && <Panel key={`${q.player}-${q.stat}`} onClose={close} />}
+      {q && <Panel key={`${q.player ?? q.team}-${q.stat}`} onClose={close} />}
     </dialog>
   );
 }
@@ -82,7 +82,7 @@ function Panel({ onClose }: { onClose: () => void }) {
   const pages = query.data?.pages ?? [];
   const first = pages[0];
   const rows = pages.flatMap((p) => p.rows);
-  const teamAbbr = first?.team ?? first?.player.team ?? q?.team;
+  const teamAbbr = first?.team ?? first?.player?.team ?? q?.team;
   const palette = team(teamAbbr);
 
   return (
@@ -175,10 +175,10 @@ function Header({ list }: { list: PlayList }) {
   // Focus the title once the plays arrive, so screen readers announce the stat
   // first and the close button doesn't sit there with a focus ring.
   useEffect(() => title.current?.focus({ preventScroll: true }), []);
-  const t = useCountUp(`${list.player.player_id}-${list.stat.key}-${list.week}-${list.team}`);
+  const t = useCountUp(`${list.player?.player_id ?? list.subject_team}-${list.stat.key}-${list.week}-${list.team}`);
   const scope = [
     list.week ? weekLabel(list.week, list.weeks.find((w) => w.week === list.week)?.season_type, list.season) : `${list.season} ${SEASON_TEXT[list.season_type] ?? ""}`,
-    list.team ? `with ${team(list.team)?.short ?? list.team}` : null,
+    list.team && list.player ? `with ${team(list.team)?.short ?? list.team}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -186,11 +186,19 @@ function Header({ list }: { list: PlayList }) {
   const shown = list.value == null ? null : list.stat.unit === "count" || list.stat.unit === "yards" ? list.value * t : list.value;
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-      <Link to={`/players/${list.player.player_id}?season=${list.season}`} className="flex min-w-0 items-center gap-2 text-sm font-bold text-gray-200 hover:underline hover:underline-offset-4">
-        <TeamMark abbr={list.team ?? list.player.team} size={13} />
-        <span className="truncate">{list.player.name}</span>
-        {list.player.position && <span className="text-xs font-semibold text-muted">{list.player.position}</span>}
-      </Link>
+      {list.player ? (
+        <Link to={`/players/${list.player.player_id}?season=${list.season}`} className="flex min-w-0 items-center gap-2 text-sm font-bold text-gray-200 hover:underline hover:underline-offset-4">
+          <TeamMark abbr={list.team ?? list.player.team} size={13} />
+          <span className="truncate">{list.player.name}</span>
+          {list.player.position && <span className="text-xs font-semibold text-muted">{list.player.position}</span>}
+        </Link>
+      ) : (
+        <TeamLink abbr={list.subject_team} season={list.season} className="flex min-w-0 items-center gap-2 text-sm font-bold text-gray-200">
+          <TeamMark abbr={list.subject_team} size={15} />
+          <span className="truncate">{team(list.subject_team)?.name ?? list.subject_team}</span>
+          <span className="text-xs font-semibold text-muted">{list.stat.group === "defense" ? "Defense" : "Offense"}</span>
+        </TeamLink>
+      )}
       <h2 ref={title} id="plays-title" tabIndex={-1} className="disp text-[2rem] leading-[0.95] outline-none sm:text-[2.4rem]">
         {list.stat.label}
       </h2>
@@ -207,11 +215,20 @@ function Header({ list }: { list: PlayList }) {
   );
 }
 
+/** What a counted play is called, for rates where "Counted" says less than it could. */
+const COUNTED_LABEL: Record<string, string> = {
+  success_rate: "Success",
+  explosive_rate: "Explosive",
+  third_down_rate: "Converted",
+  short_throw_miss_rate: "Miss",
+  catchable_ball_rate: "Catchable",
+};
+
 function valueChip(stat: StatInfo, r: PlayRow): string | null {
   if (stat.unit === "rate") return null;
   if (r.value == null) return null;
   if (stat.unit === "epa") return `${statValue(stat, r.value)} EPA`;
-  if (stat.key.includes("yards")) return `${r.value > 0 ? "+" : ""}${Math.round(r.value)} yds`;
+  if (stat.key.includes("yards") || stat.unit === "yards") return `${r.value > 0 ? "+" : ""}${Math.round(r.value)} yds`;
   if (stat.key === "def_sacks" && r.value === 0.5) return "Half sack";
   return null;
 }
@@ -247,7 +264,11 @@ function PlayCard({ row: r, stat, season }: { row: PlayRow; stat: StatInfo; seas
           )}
         </span>
         <span className="flex shrink-0 items-center gap-1.5">
-          {stat.unit === "rate" && r.counted && <span className="rounded-full px-2 py-0.5 text-[0.6875rem] font-extrabold uppercase tracking-[0.06em] text-white" style={{ background: "var(--tb)" }}>Counted</span>}
+          {stat.unit === "rate" && r.counted && (
+            <span className="rounded-full px-2 py-0.5 text-[0.6875rem] font-extrabold uppercase tracking-[0.06em] text-white" style={{ background: "var(--tb)" }}>
+              {COUNTED_LABEL[stat.key.replace(/_allowed$/, "")] ?? "Counted"}
+            </span>
+          )}
           {r.tags.map((t) => (
             <span key={t} className={`rounded-full px-2 py-0.5 text-[0.6875rem] font-extrabold uppercase tracking-[0.06em] ${t === "TD" ? "bg-white text-black" : "bg-white/[0.1] text-gray-200"}`}>
               {t}

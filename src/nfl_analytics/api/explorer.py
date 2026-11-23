@@ -13,6 +13,7 @@ import duckdb
 
 from nfl_analytics import metrics
 from nfl_analytics.api import models as m
+from nfl_analytics.api import team_stats
 from nfl_analytics.api.queries import _rows
 from nfl_analytics.api.stats import STATS, STATS_BY_KEY, Stat
 
@@ -70,6 +71,65 @@ def catalog(cur: duckdb.DuckDBPyConnection) -> m.StatCatalog:
         stats=[stat_info(s) for s in STATS]
         + [metric_info(d) for d in metrics.list_definitions(cur)],
         position_groups=list(POSITION_GROUPS),
+        team_stats=[team_stats.info(t) for t in team_stats.TEAM_STATS],
+    )
+
+
+def explore_teams(
+    cur: duckdb.DuckDBPyConnection,
+    *,
+    stat_key: str,
+    season: int,
+    season_type: SeasonType = "REG",
+    conference: str | None = None,
+    best_first: bool = True,
+) -> m.TeamExplorer | None:
+    """Every team ranked on one team stat. None if the stat isn't in the catalog."""
+    stat = team_stats.TEAM_STATS_BY_KEY.get(stat_key)
+    if stat is None:
+        return None
+    values = team_stats.league_values(cur, stat, season, season_type=season_type)
+    avg = sum(v.value for v in values) / len(values) if values else None
+    names = {
+        r[0]: r[1:]
+        for r in cur.execute("SELECT team, name, conference, division FROM teams").fetchall()
+    }
+    aligned = season >= 2002  # divisions and conferences as they are now
+    rows: list[m.TeamExplorerRow] = []
+    # Ranks are always league ranks (1st = best), even when listing worst first, and
+    # are taken before the conference filter, so "3rd" means 3rd in the NFL.
+    ordered = team_stats.ranked(values, stat)
+    if not best_first:
+        ordered = ordered[::-1]
+    for rank, v in ordered:
+        name, conf, div = names.get(v.team, (v.team, None, None))
+        if conference and (not aligned or conf != conference):
+            continue
+        rows.append(
+            m.TeamExplorerRow(
+                rank=rank,
+                team=v.team,
+                name=name or v.team,
+                conference=conf if aligned else None,
+                division=div if aligned else None,
+                games=v.games,
+                value=v.value,
+                plays=v.plays,
+            )
+        )
+    through = cur.execute(
+        "SELECT max(week) FROM plays WHERE season = $s AND season_type = 'REG'", {"s": season}
+    ).fetchone()
+    return m.TeamExplorer(
+        season=season,
+        seasons=seasons(cur),
+        season_type=season_type,
+        stat=team_stats.info(stat),
+        order="best" if best_first else "worst",
+        conference=conference if aligned else None,
+        through_week=through[0] if through else None,
+        league_avg=avg,
+        rows=rows,
     )
 
 

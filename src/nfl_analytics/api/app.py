@@ -10,7 +10,7 @@ import logging
 import os
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Literal
 
 import duckdb
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -127,6 +127,58 @@ def create_app(
         )
         if result is None:
             raise HTTPException(status_code=404, detail="No stat with that name.")
+        return result
+
+    @app.get("/api/explorer/teams", response_model=m.TeamExplorer)
+    def get_team_explorer(
+        cur: Cur,
+        stat: Annotated[str, Query(max_length=40)] = "epa_per_play",
+        season: Season = None,
+        season_type: Annotated[explorer.SeasonType, Query()] = "REG",
+        conference: Annotated[Literal["AFC", "NFC"] | None, Query()] = None,
+        order: Annotated[Literal["best", "worst"], Query()] = "best",
+    ) -> m.TeamExplorer:
+        result = explorer.explore_teams(
+            cur,
+            stat_key=stat,
+            season=season_or_current(cur, season),
+            season_type=season_type,
+            conference=conference,
+            best_first=order == "best",
+        )
+        if result is None:
+            raise HTTPException(status_code=404, detail="No team stat with that name.")
+        return result
+
+    @app.get("/api/team-plays", response_model=m.PlayList)
+    def get_team_plays(
+        cur: Cur,
+        team: Annotated[str, Query(pattern=r"^[A-Z]{2,3}$")],
+        stat: Annotated[str, Query(max_length=40)],
+        season: Season = None,
+        season_type: Annotated[plays.SeasonType, Query()] = "REG",
+        week: WeekParam = None,
+        sort: Annotated[plays.Sort, Query()] = "time",
+        counted_only: bool = False,
+        limit: Annotated[int, Query(ge=1, le=plays.MAX_PAGE)] = 50,
+        offset: Annotated[int, Query(ge=0, le=5000)] = 0,
+    ) -> m.PlayList:
+        result = plays.team_play_list(
+            cur,
+            key=stat,
+            team=team,
+            season=season_or_current(cur, season),
+            season_type=season_type,
+            week=week,
+            sort=sort,
+            counted_only=counted_only,
+            limit=limit,
+            offset=offset,
+        )
+        if result is None:
+            raise HTTPException(
+                status_code=404, detail="No plays for that team stat (points come from scores)."
+            )
         return result
 
     @app.get("/api/plays", response_model=m.PlayList)
