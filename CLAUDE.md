@@ -40,15 +40,7 @@ total too, and the UI says so when old data disagrees. `PlaysSheet` (one native 
 the shell) is driven by `play_*` URL params via `lib/plays.ts`; wrap any number that has
 plays in `StatTap` (inline or block). Advanced stats are in the catalog and the Explorer
 (rates and averages qualify at 50 plays by default; seasons before charting get a note).
-Team stats (done): `api/team_stats.py` defines every team stat once (which scrimmage
-plays count, from the offense's or defense's side, what each adds, and how they combine:
-mean, per game or total). League ranks, the team page's ranks, `GET /api/explorer/teams`
-and `GET /api/team-plays` all use it; points come from final scores (`team_games`) and
-have no plays list. Checked equal to `team_weeks` for all 32 teams. Ranks are always
-league ranks (1st = best), also when listing worst first or filtering a conference.
-The Explorer has a Players/Teams switch (`subject=teams` in the URL); the plays panel
-takes `play_subject=team` + `play_team`.
-Phase 3 is complete. Next: Phase 2, the MCP connector.
+Next in 3b: team stats in the Explorer.
 
 ## Frontend (web/)
 - Stack (same as WePlan): React 19, react-router 8, TanStack Query 5, Tailwind v4, Vite,
@@ -96,7 +88,7 @@ Phase 3 is complete. Next: Phase 2, the MCP connector.
   must be `count(*)` or `avg(<column>)`; metrics reading FTN fields get the credit
   automatically (`metrics.FTN_FIELDS`).
 - New box-score stats need a play rule in `api/stats.py`; re-run the box-score comparison
-  before shipping a rule change. New team stats go in `api/team_stats.py` only.
+  before shipping a rule change.
 - User input is always a bound parameter. Never format user values into SQL.
 - SQL files separate statements with a line containing only `-- ;;`.
 - Freshness: ingest checks nflverse on `NFL_CHECK_CRONS` (default every 15 min on game
