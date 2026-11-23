@@ -95,7 +95,7 @@ function Ticker({ games }: { games: Game[] }) {
     const aw = g.is_final && (g.away.score ?? 0) > (g.home.score ?? 0);
     const hw = g.is_final && (g.home.score ?? 0) > (g.away.score ?? 0);
     return (
-      <span key={g.game_id} className="inline-flex items-center gap-2 whitespace-nowrap border-r border-white/[0.07] px-5 py-2 text-[0.8125rem] font-semibold text-gray-300">
+      <Link key={g.game_id} to={`/games/${g.game_id}`} tabIndex={-1} className="inline-flex items-center gap-2 whitespace-nowrap border-r border-white/[0.07] px-5 py-2 text-[0.8125rem] font-semibold text-gray-300 hover:text-white">
         <TeamMark abbr={g.away.team} size={11} />
         <span className={aw ? "font-extrabold text-white" : ""}>
           {g.away.team} {g.away.score ?? ""}
@@ -109,7 +109,7 @@ function Ticker({ games }: { games: Game[] }) {
           {live && <span className="live-dot" />}
           {live ? live.detail.toUpperCase() : g.is_final ? (g.is_overtime ? "FINAL/OT" : "FINAL") : kickoff(g.kickoff_time_et).toUpperCase()}
         </span>
-      </span>
+      </Link>
     );
   });
   return (
@@ -258,9 +258,10 @@ function GameCard({ game: g }: { game: Game }) {
   const live = g.live?.state === "in" ? g.live : null;
   const label = `${team(g.away.team)?.name ?? g.away.team} ${g.away.score ?? ""} at ${team(g.home.team)?.name ?? g.home.team} ${g.home.score ?? ""}, ${live ? `live, ${live.detail}` : status(g)}`;
   return (
-    <article
-      aria-label={label}
-      className="relative flex flex-col gap-3 overflow-hidden rounded-[18px] p-4 transition-transform duration-200 hover:-translate-y-0.5"
+    <Link
+      to={`/games/${g.game_id}`}
+      aria-label={`${label}. Open the game.`}
+      className="relative flex h-full flex-col gap-3 overflow-hidden rounded-[18px] p-4 transition-transform duration-200 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--tb)]"
       style={{
         background: "#0b0b0c",
         border: g.is_final ? "1px solid rgba(255,255,255,0.1)" : "1px solid var(--tb)",
@@ -292,7 +293,7 @@ function GameCard({ game: g }: { game: Game }) {
         [g.home, hw],
       ] as const).map(([side, won]) => (
         <div key={side.team} className="relative flex items-center gap-2.5">
-          <TeamLink abbr={side.team} season={g.season} className="flex min-w-0 flex-1 items-center gap-2.5">
+          <span className="flex min-w-0 flex-1 items-center gap-2.5">
             <TeamMark abbr={side.team} size={16} />
             <span className="flex min-w-0 flex-1 flex-col">
               <span className={`num flex items-center gap-1.5 truncate text-[1.5rem] leading-none ${won || !g.is_final ? "text-white" : "text-muted"}`}>
@@ -305,7 +306,7 @@ function GameCard({ game: g }: { game: Game }) {
                 </span>
               )}
             </span>
-          </TeamLink>
+          </span>
           {side.score != null && (
             <span aria-hidden="true" className={`num text-[2.5rem] leading-[0.9] ${won ? "text-white" : "text-faint"}`} style={won ? { textShadow: "0 0 18px rgba(255,255,255,0.35)" } : undefined}>
               {side.score}
@@ -330,24 +331,25 @@ function GameCard({ game: g }: { game: Game }) {
           {g.total_line != null && <> · O/U {g.total_line}</>}
         </p>
       )}
-    </article>
+    </Link>
   );
 }
 
 function GameRow({ game: g }: { game: Game }) {
   const { aw, hw } = outcome(g);
   return (
-    <div
-      className="grid grid-cols-[minmax(0,1fr)_4.5rem_minmax(0,1fr)] items-center gap-3 rounded-[12px] px-3 py-2.5 sm:grid-cols-[6rem_minmax(0,1fr)_5.5rem_minmax(0,1fr)_5.5rem]"
+    <Link
+      to={`/games/${g.game_id}`}
+      className="grid grid-cols-[minmax(0,1fr)_4.5rem_minmax(0,1fr)] items-center gap-3 rounded-[12px] px-3 py-2.5 transition-colors hover:bg-white/[0.04] sm:grid-cols-[6rem_minmax(0,1fr)_5.5rem_minmax(0,1fr)_5.5rem]"
       style={{
         background: `linear-gradient(90deg, ${alpha(bright(g.away.team), aw ? 0.22 : 0.07)}, rgba(255,255,255,0.02) 40%, rgba(255,255,255,0.02) 60%, ${alpha(bright(g.home.team), hw ? 0.22 : 0.07)})`,
       }}
     >
       <span className="hidden text-[0.6875rem] font-bold uppercase tracking-[0.08em] text-muted sm:block">{shortDate(g.game_date)}</span>
-      <TeamLink abbr={g.away.team} season={g.season} className="flex min-w-0 items-center justify-end gap-2">
+      <span className="flex min-w-0 items-center justify-end gap-2">
         <span className={`num truncate text-[1.25rem] ${aw || !g.is_final ? "text-white" : "text-muted"}`}>{team(g.away.team)?.short ?? g.away.team}</span>
         <TeamMark abbr={g.away.team} size={14} />
-      </TeamLink>
+      </span>
       <span className="num flex flex-col items-center text-center text-[1.5rem] leading-none text-white">
         {g.is_final || g.live?.state === "in" ? `${g.away.score ?? 0}–${g.home.score ?? 0}` : kickoff(g.kickoff_time_et).replace(" ET", "")}
         {g.live?.state === "in" && (
@@ -356,15 +358,15 @@ function GameRow({ game: g }: { game: Game }) {
           </span>
         )}
       </span>
-      <TeamLink abbr={g.home.team} season={g.season} className="flex min-w-0 items-center gap-2">
+      <span className="flex min-w-0 items-center gap-2">
         <TeamMark abbr={g.home.team} size={14} />
         <span className={`num truncate text-[1.25rem] ${hw || !g.is_final ? "text-white" : "text-muted"}`}>{team(g.home.team)?.short ?? g.home.team}</span>
-      </TeamLink>
+      </span>
       <span className={`hidden items-center justify-end gap-1.5 text-right text-[0.6875rem] font-extrabold uppercase tracking-[0.1em] sm:flex ${g.is_final ? "text-muted" : "text-[var(--tb)]"}`}>
         {g.live?.state === "in" && <span className="live-dot" aria-hidden="true" />}
         {g.live?.state === "in" ? g.live.detail : g.is_final ? status(g) : "Upcoming"}
       </span>
-    </div>
+    </Link>
   );
 }
 

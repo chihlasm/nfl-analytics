@@ -405,3 +405,137 @@ class TeamExplorer(BaseModel):
     through_week: int | None
     league_avg: float | None
     rows: list[TeamExplorerRow]
+
+
+class GameInfo(BaseModel):
+    """Where and how a game was played."""
+
+    stadium: str | None
+    roof: str | None
+    surface: str | None
+    temp_f: float | None
+    wind_mph: float | None
+    home_coach: str | None
+    away_coach: str | None
+    referee: str | None
+    home_moneyline: float | None
+    away_moneyline: float | None
+    is_division_game: bool
+
+
+class QuarterScore(BaseModel):
+    label: str  # "1".."4", "OT"
+    away: int
+    home: int
+
+
+class GameStat(BaseModel):
+    """One row of a team comparison: the same stat for both teams."""
+
+    key: str
+    label: str
+    group: str  # box | advanced
+    away: float | None
+    home: float | None
+    away_text: str | None = None  # for split figures like "5/12" or "31:04"
+    home_text: str | None = None
+    unit: str
+    decimals: int
+    higher_is_better: bool | None  # None: no better side (plays run, say)
+    edge: str | None  # away | home | None
+    has_plays: bool  # a team stat in api/team_stats.py, so it opens its plays
+
+
+class WinPoint(BaseModel):
+    t: int  # seconds since kickoff (overtime continues past 3600)
+    home_wp: float
+
+
+class GamePlay(BaseModel):
+    play_id: int
+    qtr: int | None
+    clock: str | None
+    team: str | None  # offense
+    description: str | None
+    home_wp_change: float | None  # how much the play moved home's win probability
+    away_score: int | None  # score after the play
+    home_score: int | None
+    kind: str | None  # TD | FG | Safety | Turnover
+
+
+class PlayerLine(BaseModel):
+    player_id: str
+    name: str
+    position: str | None
+    stats: dict[str, float]
+
+
+class PlayerGroup(BaseModel):
+    key: str  # passing | rushing | receiving | defense
+    label: str
+    columns: list[StatInfo]
+    away: list[PlayerLine]
+    home: list[PlayerLine]
+
+
+class GameRecap(BaseModel):
+    quarters: list[QuarterScore]
+    team_stats: list[GameStat]
+    win_probability: list[WinPoint]
+    key_plays: list[GamePlay]
+    scoring_plays: list[GamePlay]
+    players: list[PlayerGroup]
+
+
+class MatchupRow(BaseModel):
+    """One team's stat against the other's, with league ranks (1 = best)."""
+
+    label: str
+    away_key: str
+    home_key: str
+    away_value: float | None
+    away_rank: int | None
+    home_value: float | None
+    home_rank: int | None
+    unit: str
+    decimals: int
+    teams: int
+    edge: str | None  # away | home | None (even)
+
+
+class Meeting(BaseModel):
+    game_id: str
+    season: int
+    week: int
+    game_type: str
+    game_date: date | None
+    home: str
+    away_score: int | None
+    home_score: int | None
+    winner: str | None
+
+
+class GamePreview(BaseModel):
+    stats_season: int
+    stats_note: str | None  # e.g. last season's numbers before any games this season
+    away_record: TeamRecord | None
+    home_record: TeamRecord | None
+    away_form: list[str]  # last five results, oldest first
+    home_form: list[str]
+    away_offense: list[MatchupRow]  # away offense vs home defense
+    home_offense: list[MatchupRow]  # home offense vs away defense
+    side_by_side: list[MatchupRow]  # same stat for both teams
+    meetings: list[Meeting]
+    away_leaders: list[LeaderBoard]
+    home_leaders: list[LeaderBoard]
+    injury_week: int | None
+    away_injuries: list[InjuryRow]
+    home_injuries: list[InjuryRow]
+
+
+class GameDetail(BaseModel):
+    game: Game
+    info: GameInfo
+    mode: str  # recap (play-by-play is in) | preview (not played, or nflverse catching up)
+    recap: GameRecap | None
+    preview: GamePreview | None

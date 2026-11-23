@@ -72,6 +72,26 @@ def meta(cur: duckdb.DuckDBPyConnection) -> m.Meta:
     )
 
 
+def game_from_row(r: dict[str, Any]) -> m.Game:
+    """A `games` view row as the API's Game."""
+    return m.Game(
+        game_id=r["game_id"],
+        season=r["season"],
+        week=r["week"],
+        game_type=r["game_type"],
+        game_date=r["game_date"],
+        kickoff_time_et=r["kickoff_time_et"],
+        home=m.TeamScore(team=r["home_team"], score=r["home_score"], qb_name=r["home_qb_name"]),
+        away=m.TeamScore(team=r["away_team"], score=r["away_score"], qb_name=r["away_qb_name"]),
+        is_final=bool(r["is_final"]),
+        is_overtime=bool(r["is_overtime"]),
+        spread_line=r["spread_line"],
+        total_line=r["total_line"],
+        stadium=r["stadium"],
+        roof=r["roof"],
+    )
+
+
 def week_games(cur: duckdb.DuckDBPyConnection, season: int, week: int | None) -> m.Week:
     weeks = [
         r[0]
@@ -89,25 +109,7 @@ def week_games(cur: duckdb.DuckDBPyConnection, season: int, week: int | None) ->
         "ORDER BY game_date, kickoff_time_et, game_id",
         {"s": season, "w": week},
     )
-    games = [
-        m.Game(
-            game_id=r["game_id"],
-            season=r["season"],
-            week=r["week"],
-            game_type=r["game_type"],
-            game_date=r["game_date"],
-            kickoff_time_et=r["kickoff_time_et"],
-            home=m.TeamScore(team=r["home_team"], score=r["home_score"], qb_name=r["home_qb_name"]),
-            away=m.TeamScore(team=r["away_team"], score=r["away_score"], qb_name=r["away_qb_name"]),
-            is_final=bool(r["is_final"]),
-            is_overtime=bool(r["is_overtime"]),
-            spread_line=r["spread_line"],
-            total_line=r["total_line"],
-            stadium=r["stadium"],
-            roof=r["roof"],
-        )
-        for r in rows
-    ]
+    games = [game_from_row(r) for r in rows]
     return m.Week(season=season, week=week, weeks=weeks, games=games)
 
 

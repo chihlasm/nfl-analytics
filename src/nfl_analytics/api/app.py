@@ -17,7 +17,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 
 from nfl_analytics import __version__
-from nfl_analytics.api import explorer, plays, queries, teams
+from nfl_analytics.api import explorer, games, plays, queries, teams
 from nfl_analytics.api import models as m
 from nfl_analytics.api.db import Database, DatabaseUnavailable
 from nfl_analytics.api.live import LiveScores
@@ -99,6 +99,13 @@ def create_app(
     def get_games(cur: Cur, season: Season = None, week: WeekParam = None) -> m.Week:
         # Live scores sit on top of the database's games until nflverse has the final.
         return live.apply(queries.week_games(cur, season_or_current(cur, season), week))
+
+    @app.get("/api/games/{game_id}", response_model=m.GameDetail)
+    def get_game(cur: Cur, game_id: str) -> m.GameDetail:
+        detail = games.game_detail(cur, game_id, live)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="No game with that id.")
+        return detail
 
     @app.get("/api/stats", response_model=m.StatCatalog)
     def get_stats(cur: Cur) -> m.StatCatalog:

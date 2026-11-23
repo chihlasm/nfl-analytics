@@ -291,11 +291,11 @@ function Schedule({ profile: p }: { profile: TeamProfile }) {
                   </td>
                   <td>
                     {g.result ? (
-                      <span className="font-bold">
+                      <Link to={`/games/${g.game_id}`} className="font-bold hover:underline hover:underline-offset-4">
                         <span className={g.result === "W" ? "text-[var(--tb)]" : "text-gray-300"}>{g.result}</span>{" "}
                         {g.points_for}–{g.points_against}
                         {g.is_overtime ? " OT" : ""}
-                      </span>
+                      </Link>
                     ) : (
                       <span className="text-muted">
                         {shortDate(g.game_date)} {kickoff(g.kickoff_time_et).replace(" ET", "")}
@@ -320,8 +320,11 @@ function ScheduleCard({ game: g, profile: p, isNext }: { game: TeamGame; profile
   const win = g.result === "W";
   const line = lineText(g, p.info.team);
   return (
-    <li
-      className="relative flex min-h-[8.5rem] flex-col justify-between gap-2 overflow-hidden rounded-[16px] p-3"
+    <li>
+      <Link
+        to={`/games/${g.game_id}`}
+        aria-label={`${gameWeek(g, p.season)}, ${g.is_home ? "vs" : "at"} ${team(g.opponent)?.name ?? g.opponent}${g.result ? `, ${g.result} ${g.points_for}-${g.points_against}` : ""}. Open the game.`}
+        className="relative flex h-full min-h-[8.5rem] flex-col justify-between gap-2 overflow-hidden rounded-[16px] p-3 transition-transform hover:-translate-y-0.5"
       style={{
         background: "#0b0b0c",
         border: isNext ? "1px solid var(--tb)" : "1px solid rgba(255,255,255,0.09)",
@@ -341,11 +344,11 @@ function ScheduleCard({ game: g, profile: p, isNext }: { game: TeamGame; profile
         <span>{gameWeek(g, p.season)}</span>
         {g.is_division_game && <span className="text-faint">Division</span>}
       </div>
-      <TeamLink abbr={g.opponent} season={p.season} className="relative flex items-center gap-2">
+      <span className="relative flex items-center gap-2">
         <span className="text-xs font-bold text-muted">{g.is_home ? "vs" : "at"}</span>
         <TeamMark abbr={g.opponent} size={15} />
         <span className="num truncate text-[1.35rem] leading-none text-white">{team(g.opponent)?.short ?? g.opponent}</span>
-      </TeamLink>
+      </span>
       {g.result ? (
         <div className="relative flex items-center gap-2">
           <ResultChip result={g.result} />
@@ -363,6 +366,7 @@ function ScheduleCard({ game: g, profile: p, isNext }: { game: TeamGame; profile
           {line && <span className="text-muted">{line}</span>}
         </div>
       )}
+      </Link>
     </li>
   );
 }

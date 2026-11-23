@@ -466,3 +466,139 @@ export interface TeamExplorer {
   league_avg: number | null;
   rows: TeamExplorerRow[];
 }
+
+export interface GameInfo {
+  stadium: string | null;
+  roof: string | null;
+  surface: string | null;
+  temp_f: number | null;
+  wind_mph: number | null;
+  home_coach: string | null;
+  away_coach: string | null;
+  referee: string | null;
+  home_moneyline: number | null;
+  away_moneyline: number | null;
+  is_division_game: boolean;
+}
+
+export interface QuarterScore {
+  label: string;
+  away: number;
+  home: number;
+}
+
+/** One row of a team comparison: the same stat for both teams. */
+export interface GameStat {
+  key: string;
+  label: string;
+  group: "box" | "advanced";
+  away: number | null;
+  home: number | null;
+  /** Split figures like "5/12" or "31:04". */
+  away_text: string | null;
+  home_text: string | null;
+  unit: StatUnit;
+  decimals: number;
+  /** Null when neither side is better (plays run, say). */
+  higher_is_better: boolean | null;
+  edge: "away" | "home" | null;
+  /** A team stat from the catalog, so it opens its plays. */
+  has_plays: boolean;
+}
+
+export interface WinPoint {
+  /** Seconds since kickoff; overtime continues past 3600. */
+  t: number;
+  home_wp: number;
+}
+
+export interface GamePlay {
+  play_id: number;
+  qtr: number | null;
+  clock: string | null;
+  team: string | null;
+  description: string | null;
+  /** How much the play moved the home team's win probability. */
+  home_wp_change: number | null;
+  away_score: number | null;
+  home_score: number | null;
+  kind: "TD" | "FG" | "Safety" | "Turnover" | null;
+}
+
+export interface PlayerLine {
+  player_id: string;
+  name: string;
+  position: string | null;
+  stats: Record<string, number>;
+}
+
+export interface PlayerGroup {
+  key: string;
+  label: string;
+  columns: StatInfo[];
+  away: PlayerLine[];
+  home: PlayerLine[];
+}
+
+export interface GameRecap {
+  quarters: QuarterScore[];
+  team_stats: GameStat[];
+  win_probability: WinPoint[];
+  key_plays: GamePlay[];
+  scoring_plays: GamePlay[];
+  players: PlayerGroup[];
+}
+
+/** One team's stat against the other's, with league ranks (1 = best). */
+export interface MatchupRow {
+  label: string;
+  away_key: string;
+  home_key: string;
+  away_value: number | null;
+  away_rank: number | null;
+  home_value: number | null;
+  home_rank: number | null;
+  unit: StatUnit;
+  decimals: number;
+  teams: number;
+  edge: "away" | "home" | null;
+}
+
+export interface Meeting {
+  game_id: string;
+  season: number;
+  week: number;
+  game_type: string;
+  game_date: string | null;
+  home: string;
+  away_score: number | null;
+  home_score: number | null;
+  winner: string | null;
+}
+
+export interface GamePreview {
+  stats_season: number;
+  stats_note: string | null;
+  away_record: TeamRecord | null;
+  home_record: TeamRecord | null;
+  away_form: GameResult[];
+  home_form: GameResult[];
+  away_offense: MatchupRow[];
+  home_offense: MatchupRow[];
+  side_by_side: MatchupRow[];
+  meetings: Meeting[];
+  away_leaders: LeaderBoard[];
+  home_leaders: LeaderBoard[];
+  injury_week: number | null;
+  away_injuries: InjuryRow[];
+  home_injuries: InjuryRow[];
+}
+
+export interface GameDetail {
+  game: Game;
+  info: GameInfo;
+  /** recap once the play-by-play is in; preview before that (or while nflverse catches up). */
+  mode: "recap" | "preview";
+  recap: GameRecap | null;
+  preview: GamePreview | null;
+}
