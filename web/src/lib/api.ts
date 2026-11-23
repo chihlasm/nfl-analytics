@@ -52,6 +52,25 @@ export interface TeamScore {
   qb_name: string | null;
 }
 
+/** A game in progress (or just finished) from the live scoreboard. */
+export interface LiveStatus {
+  state: "pre" | "in" | "post";
+  /** "7:34 - 2nd", "Halftime", "Final/OT" */
+  detail: string;
+  period: number | null;
+  clock: string | null;
+  away_score: number | null;
+  home_score: number | null;
+  /** Team with the ball. */
+  possession: string | null;
+  /** "3rd & 7 at SF 34" */
+  down_distance: string | null;
+  red_zone: boolean;
+  last_play: string | null;
+  is_overtime: boolean;
+  updated_at: string;
+}
+
 export interface Game {
   game_id: string;
   season: number;
@@ -67,6 +86,8 @@ export interface Game {
   total_line: number | null;
   stadium: string | null;
   roof: string | null;
+  /** Set while the live scoreboard has the game on (or nflverse hasn't posted the final). */
+  live: LiveStatus | null;
 }
 
 export interface Week {

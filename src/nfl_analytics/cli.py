@@ -2,7 +2,7 @@
 
 nfl refresh [--full]   download what changed and rebuild the database once
 nfl build              rebuild from the local cache only (no downloads)
-nfl schedule           run forever: daily and weekly refreshes on cron schedules
+nfl schedule           run forever: frequent checks for new data plus a weekly full refresh
 nfl health             exit 0 if the last successful run is recent (Docker health check)
 nfl status             print the last run's status
 nfl metric NAME ...    compute a saved metric for a player
@@ -63,27 +63,37 @@ def cmd_build(settings: Settings, _: argparse.Namespace) -> int:
 
 def cmd_schedule(settings: Settings, args: argparse.Namespace) -> int:
     from apscheduler.schedulers.blocking import BlockingScheduler
+    from apscheduler.triggers.combining import OrTrigger
     from apscheduler.triggers.cron import CronTrigger
 
-    def safe_run(mode: Mode) -> None:
+    def safe_run(mode: Mode, lock_wait: float = 3 * 3600) -> None:
         # A failed run is already logged and recorded in status.json (which turns the
-        # container unhealthy). Swallow it so the scheduler keeps running.
+        # container unhealthy). Swallow it so the scheduler keeps running. A check that
+        # finds another refresh running just skips (PipelineBusy, also swallowed).
         with contextlib.suppress(Exception):
-            run(settings, mode)
+            run(settings, mode, lock_wait_seconds=lock_wait)
 
+    def trigger(expr: str) -> CronTrigger:
+        try:
+            return CronTrigger.from_crontab(expr, timezone=settings.timezone)
+        except ValueError as exc:
+            raise SystemExit(f"Bad refresh schedule {expr!r}: {exc}") from exc
+
+    # Frequent checks for new data, plus NFL_DAILY_CRON if it is set (older .env files).
+    checks = OrTrigger([trigger(e) for e in (*settings.check_crons, settings.daily_cron)])
     scheduler = BlockingScheduler(timezone=settings.timezone)
     scheduler.add_job(
         safe_run,
-        CronTrigger.from_crontab(settings.daily_cron, timezone=settings.timezone),
-        args=[Mode.DAILY],
-        id="daily",
+        checks,
+        args=[Mode.DAILY, 0],
+        id="check",
         max_instances=1,
         coalesce=True,
-        misfire_grace_time=3600,
+        misfire_grace_time=600,
     )
     scheduler.add_job(
         safe_run,
-        CronTrigger.from_crontab(settings.full_refresh_cron, timezone=settings.timezone),
+        trigger(settings.full_refresh_cron),
         args=[Mode.FULL],
         id="full",
         max_instances=1,
@@ -111,9 +121,9 @@ def cmd_schedule(settings: Settings, args: argparse.Namespace) -> int:
             log.exception("Startup rebuild failed; the next scheduled run will retry")
 
     log.info(
-        "Scheduler started (%s): daily '%s', full '%s'",
+        "Scheduler started (%s): checks %s, full '%s'",
         settings.timezone,
-        settings.daily_cron,
+        "; ".join((*settings.check_crons, settings.daily_cron)),
         settings.full_refresh_cron,
     )
     scheduler.start()

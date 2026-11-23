@@ -90,7 +90,8 @@ export function Home() {
 
 /** Scores scrolling across the top, like a broadcast crawl. Paused for reduced motion. */
 function Ticker({ games }: { games: Game[] }) {
-  const items = games.map((g) => {
+  const items = liveFirst(games).map((g) => {
+    const live = g.live?.state === "in" ? g.live : null;
     const aw = g.is_final && (g.away.score ?? 0) > (g.home.score ?? 0);
     const hw = g.is_final && (g.home.score ?? 0) > (g.away.score ?? 0);
     return (
@@ -104,8 +105,9 @@ function Ticker({ games }: { games: Game[] }) {
         <span className={hw ? "font-extrabold text-white" : ""}>
           {g.home.team} {g.home.score ?? ""}
         </span>
-        <span className={`text-[0.625rem] font-extrabold tracking-[0.1em] ${g.is_final ? "text-faint" : "text-[var(--tb)]"}`}>
-          {g.is_final ? (g.is_overtime ? "FINAL/OT" : "FINAL") : kickoff(g.kickoff_time_et).toUpperCase()}
+        <span className={`inline-flex items-center gap-1.5 text-[0.625rem] font-extrabold tracking-[0.1em] ${g.is_final ? "text-faint" : "text-[var(--tb)]"}`}>
+          {live && <span className="live-dot" />}
+          {live ? live.detail.toUpperCase() : g.is_final ? (g.is_overtime ? "FINAL/OT" : "FINAL") : kickoff(g.kickoff_time_et).toUpperCase()}
         </span>
       </span>
     );
@@ -134,7 +136,8 @@ function Facts({ games }: { games: Game[] }) {
   };
   const pick = (score: (g: Game) => number, best: "max" | "min") =>
     finals.reduce<Game | undefined>((a, g) => (!a || (best === "max" ? score(g) > score(a) : score(g) < score(a)) ? g : a), undefined);
-  const next = games.find((g) => !g.is_final);
+  const onNow = games.filter((g) => g.live?.state === "in");
+  const next = games.find((g) => !g.is_final && g.live?.state !== "in");
   const high = pick(total, "max");
   const close = pick(margin, "min");
   const blowout = pick(margin, "max");
@@ -144,8 +147,12 @@ function Facts({ games }: { games: Game[] }) {
       label: "Games played",
       value: String(finals.length),
       unit: `/ ${games.length}`,
-      note: next ? `Next: ${next.away.team} at ${next.home.team}, ${kickoff(next.kickoff_time_et)}` : "Week complete",
-      teams: next ? [next.away.team, next.home.team] : [],
+      note: onNow[0]
+        ? `Live: ${onNow[0].away.team} ${onNow[0].away.score ?? 0}, ${onNow[0].home.team} ${onNow[0].home.score ?? 0}${onNow.length > 1 ? ` (+${onNow.length - 1} more)` : ""}`
+        : next
+          ? `Next: ${next.away.team} at ${next.home.team}, ${kickoff(next.kickoff_time_et)}`
+          : "Week complete",
+      teams: onNow[0] ? [onNow[0].away.team, onNow[0].home.team] : next ? [next.away.team, next.home.team] : [],
       glow: "var(--tb)",
     },
     high && { label: "Highest scoring", value: String(total(high)), unit: "pts", note: winnerFirst(high), teams: [high.away.team, high.home.team], glow: bright(high.home.team) },
@@ -191,8 +198,14 @@ const SCORE_VIEWS: readonly Option<ScoresView>[] = [
   { key: "compact", label: "Compact" },
 ];
 
-function Scores({ games, isPending, error, dim }: { games: Game[]; isPending: boolean; error: unknown; dim: boolean }) {
+/** Games on now come first; everything else keeps kickoff order. */
+function liveFirst(games: Game[]): Game[] {
+  return [...games.filter((g) => g.live?.state === "in"), ...games.filter((g) => g.live?.state !== "in")];
+}
+
+function Scores({ games: all, isPending, error, dim }: { games: Game[]; isPending: boolean; error: unknown; dim: boolean }) {
   const [view, setView] = useState<ScoresView>("cards");
+  const games = liveFirst(all);
   return (
     <Panel title="Scores" delay={0.1} actions={<Segmented options={SCORE_VIEWS} value={view} onChange={setView} label="Scores view" />}>
       <QueryState isPending={isPending} error={error} empty={games.length === 0} emptyText="No games scheduled this week." rows={4}>
@@ -226,13 +239,24 @@ function outcome(g: Game) {
 }
 
 function status(g: Game) {
+  if (g.live?.state === "in") return g.live.detail;
   if (g.is_final) return g.is_overtime ? "Final/OT" : "Final";
   return `${shortDate(g.game_date).split(",")[0] ?? ""} ${kickoff(g.kickoff_time_et)}`.trim();
 }
 
+function LiveBadge({ detail }: { detail: string }) {
+  return (
+    <span className="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-white" style={{ background: "var(--tb)", boxShadow: "0 0 16px -2px var(--tb)" }}>
+      <span className="live-dot" aria-hidden="true" />
+      Live · {detail}
+    </span>
+  );
+}
+
 function GameCard({ game: g }: { game: Game }) {
   const { aw, hw } = outcome(g);
-  const label = `${team(g.away.team)?.name ?? g.away.team} ${g.away.score ?? ""} at ${team(g.home.team)?.name ?? g.home.team} ${g.home.score ?? ""}, ${status(g)}`;
+  const live = g.live?.state === "in" ? g.live : null;
+  const label = `${team(g.away.team)?.name ?? g.away.team} ${g.away.score ?? ""} at ${team(g.home.team)?.name ?? g.home.team} ${g.home.score ?? ""}, ${live ? `live, ${live.detail}` : status(g)}`;
   return (
     <article
       aria-label={label}
@@ -242,6 +266,7 @@ function GameCard({ game: g }: { game: Game }) {
         border: g.is_final ? "1px solid rgba(255,255,255,0.1)" : "1px solid var(--tb)",
         boxShadow: g.is_final ? undefined : "0 0 34px -8px color-mix(in srgb, var(--tb) 80%, transparent)",
       }}
+      data-live={live ? "true" : undefined}
     >
       <div
         aria-hidden="true"
@@ -252,7 +277,9 @@ function GameCard({ game: g }: { game: Game }) {
       />
       <div className="relative flex items-center justify-between text-[0.6875rem] font-extrabold uppercase tracking-[0.1em] text-gray-300" aria-hidden="true">
         <span>{shortDate(g.game_date)}</span>
-        {g.is_final ? (
+        {live ? (
+          <LiveBadge detail={live.detail} />
+        ) : g.is_final ? (
           <span className="text-muted">{status(g)}</span>
         ) : (
           <span className="rounded-full px-2 py-0.5 text-white" style={{ background: "var(--tb)" }}>
@@ -268,8 +295,9 @@ function GameCard({ game: g }: { game: Game }) {
           <TeamLink abbr={side.team} season={g.season} className="flex min-w-0 flex-1 items-center gap-2.5">
             <TeamMark abbr={side.team} size={16} />
             <span className="flex min-w-0 flex-1 flex-col">
-              <span className={`num truncate text-[1.5rem] leading-none ${won || !g.is_final ? "text-white" : "text-muted"}`}>
+              <span className={`num flex items-center gap-1.5 truncate text-[1.5rem] leading-none ${won || !g.is_final ? "text-white" : "text-muted"}`}>
                 {team(side.team)?.short ?? side.team}
+                {live?.possession === side.team && <span className="possession" title="Has the ball" aria-label="has the ball" />}
               </span>
               {side.qb_name && (
                 <span className="truncate text-xs text-faint" aria-hidden="true">
@@ -285,7 +313,18 @@ function GameCard({ game: g }: { game: Game }) {
           )}
         </div>
       ))}
-      {!g.is_final && g.spread_line != null && (
+      {live && (live.down_distance || live.last_play) && (
+        <div className="relative flex flex-col gap-1 border-t border-white/[0.08] pt-2.5 text-xs" aria-hidden="true">
+          {live.down_distance && (
+            <span className="flex items-center gap-2 font-bold text-gray-200">
+              {live.down_distance}
+              {live.red_zone && <span className="rounded-full bg-white px-1.5 py-px text-[0.625rem] font-extrabold uppercase tracking-[0.08em] text-black">Red zone</span>}
+            </span>
+          )}
+          {live.last_play && <span className="line-clamp-2 text-faint">{live.last_play}</span>}
+        </div>
+      )}
+      {!live && !g.is_final && g.spread_line != null && (
         <p className="relative text-xs font-semibold text-gray-300">
           {g.spread_line === 0 ? "Pick'em" : `${g.spread_line > 0 ? g.home.team : g.away.team} by ${Math.abs(g.spread_line)}`}
           {g.total_line != null && <> · O/U {g.total_line}</>}
@@ -309,15 +348,21 @@ function GameRow({ game: g }: { game: Game }) {
         <span className={`num truncate text-[1.25rem] ${aw || !g.is_final ? "text-white" : "text-muted"}`}>{team(g.away.team)?.short ?? g.away.team}</span>
         <TeamMark abbr={g.away.team} size={14} />
       </TeamLink>
-      <span className="num text-center text-[1.5rem] text-white">
-        {g.is_final ? `${g.away.score}–${g.home.score}` : kickoff(g.kickoff_time_et).replace(" ET", "")}
+      <span className="num flex flex-col items-center text-center text-[1.5rem] leading-none text-white">
+        {g.is_final || g.live?.state === "in" ? `${g.away.score ?? 0}–${g.home.score ?? 0}` : kickoff(g.kickoff_time_et).replace(" ET", "")}
+        {g.live?.state === "in" && (
+          <span className="mt-1 flex items-center gap-1 font-sans text-[0.625rem] font-extrabold not-italic uppercase tracking-[0.08em] text-[var(--tb)] sm:hidden">
+            <span className="live-dot" aria-hidden="true" /> {g.live.detail}
+          </span>
+        )}
       </span>
       <TeamLink abbr={g.home.team} season={g.season} className="flex min-w-0 items-center gap-2">
         <TeamMark abbr={g.home.team} size={14} />
         <span className={`num truncate text-[1.25rem] ${hw || !g.is_final ? "text-white" : "text-muted"}`}>{team(g.home.team)?.short ?? g.home.team}</span>
       </TeamLink>
-      <span className={`hidden text-right text-[0.6875rem] font-extrabold uppercase tracking-[0.1em] sm:block ${g.is_final ? "text-muted" : "text-[var(--tb)]"}`}>
-        {g.is_final ? status(g) : "Upcoming"}
+      <span className={`hidden items-center justify-end gap-1.5 text-right text-[0.6875rem] font-extrabold uppercase tracking-[0.1em] sm:flex ${g.is_final ? "text-muted" : "text-[var(--tb)]"}`}>
+        {g.live?.state === "in" && <span className="live-dot" aria-hidden="true" />}
+        {g.live?.state === "in" ? g.live.detail : g.is_final ? status(g) : "Upcoming"}
       </span>
     </div>
   );
