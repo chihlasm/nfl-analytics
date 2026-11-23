@@ -114,6 +114,24 @@ TEAM_STATS: tuple[TeamStat, ...] = (
         description="Third-down plays that earned a first down or a touchdown.",
     ),
     *_pair(
+        "dropback_epa", "EPA per dropback", "EPA per dropback allowed", "PASS EPA",
+        higher_is_better=True, decimals=3, unit="epa", combine="mean", value="epa",
+        where="qb_dropback = 1",
+        description="Expected points added on dropbacks: passes, sacks and scrambles.",
+    ),
+    *_pair(
+        "rush_epa", "EPA per rush", "EPA per rush allowed", "RUSH EPA",
+        higher_is_better=True, decimals=3, unit="epa", combine="mean", value="epa",
+        where="play_type = 'run' AND coalesce(qb_scramble, 0) = 0",
+        description="Expected points added on designed runs (scrambles count as dropbacks).",
+    ),
+    *_pair(
+        "early_down_success", "Early-down success rate", "Early-down success allowed", "1-2 SR",
+        higher_is_better=True, decimals=1, unit="rate", combine="mean", value="success",
+        where="down IN (1, 2)",
+        description="Success rate on first and second down, where offenses set up the drive.",
+    ),
+    *_pair(
         "pass_yards_per_game", "Passing yards per game", "Passing yards allowed per game", "PASS",
         higher_is_better=True, decimals=1, unit="yards", combine="per_game",
         value="yards_gained", where="play_type = 'pass'",
@@ -204,9 +222,13 @@ def league_values(
     season_type: SeasonType = "REG",
     week: int | None = None,
     team: str | None = None,
+    game_id: str | None = None,
 ) -> list[TeamValue]:
-    """Every team's figure (or one team's, with `team`), unordered."""
+    """Every team's figure (or one team's, with `team`; one game's, with `game_id`)."""
     scope, params = _scope(season, season_type, week)
+    if game_id is not None:
+        scope += " AND game_id = $g"
+        params["g"] = game_id
     if stat.from_scores:
         game_type = {"REG": "game_type = 'REG'", "POST": "game_type <> 'REG'", "ALL": "TRUE"}
         where = scope.replace("season_type = $st", game_type[season_type])

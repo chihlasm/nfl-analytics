@@ -120,12 +120,30 @@ def write_fixture_cache(cache: Path) -> None:
         NULL::VARCHAR AS pass_defense_1_player_id, NULL::VARCHAR AS pass_defense_2_player_id,
         'BAL' AS home_team, 'ATL' AS away_team, 1.0 AS qtr, '10:00' AS time,
         1.0 AS down, 10.0 AS ydstogo, 'ATL 25' AS yrdln, 'Play ' || play_id AS "desc",
-        0.0 AS penalty, 0.0 AS third_down_converted
+        0.0 AS penalty, 0.0 AS third_down_converted,
+        -- Game-page columns: ATL (away) scores a touchdown on play 7; BAL's points
+        -- aren't in this play-by-play, so the official final has to fill them in.
+        CASE WHEN play_id >= 7 THEN 6.0 ELSE 0.0 END AS total_away_score,
+        0.0 AS total_home_score,
+        0.5 - play_id * 0.01 AS home_wp, epa / 10 AS wpa,
+        3600.0 - play_id * 100 AS game_seconds_remaining,
+        CASE WHEN play_id <= 4 THEN 1.0 ELSE 2.0 END AS fixed_drive,
+        CASE WHEN play_id <= 4 THEN 'Punt' ELSE 'Touchdown' END AS fixed_drive_result,
+        CASE WHEN play_id <= 4 THEN '3:00' ELSE '4:30' END AS drive_time_of_possession,
+        CASE WHEN play_id >= 5 THEN 15.0 ELSE 60.0 END AS yardline_100,
+        CASE WHEN play_id = 7 THEN 1.0 ELSE 0.0 END AS first_down,
+        0.0 AS fourth_down_converted, NULL::VARCHAR AS field_goal_result, 0.0 AS safety,
+        0.0 AS qb_scramble, NULL::VARCHAR AS penalty_team, NULL::DOUBLE AS penalty_yards
     """
     _write(con, f"SELECT {pbp_cols} FROM fx", cache / "pbp" / f"play_by_play_{SEASON}.parquet")
     _write(
         con,
-        f"SELECT {pbp_cols.replace(str(SEASON) + ' AS season', str(PREV) + ' AS season')} "
+        # Last season's copy gets its own game id, as real nflverse ids include the season.
+        "SELECT "
+        + pbp_cols.replace(str(SEASON) + " AS season", str(PREV) + " AS season").replace(
+            f"'{GAME}' AS game_id", f"'{GAME.replace(str(SEASON), str(PREV))}' AS game_id"
+        )
+        + " "
         "FROM fx WHERE play_id = 7",
         cache / "pbp" / f"play_by_play_{PREV}.parquet",
     )
@@ -145,7 +163,11 @@ def write_fixture_cache(cache: Path) -> None:
         con,
         f"""
         SELECT player_id, player_display_name, position, team, opponent_team, season, week,
-               season_type, {stat_cols}
+               season_type, {stat_cols},
+               -- Week 5 is the fixture game; other weeks get their own (made-up) ids.
+               CASE WHEN week = 5 THEN '{GAME}'
+                    ELSE season || '_' || lpad(week::VARCHAR, 2, '0') || '_' || team || '_'
+                         || opponent_team END AS game_id
         FROM (VALUES
             ('{QB}', 'Michael Penix Jr.', 'QB', 'ATL', 'BAL', {SEASON}, 5, 'REG', 1),
             ('{QB}', 'Michael Penix Jr.', 'QB', 'ATL', 'CHI', {SEASON}, 6, 'REG', 2),

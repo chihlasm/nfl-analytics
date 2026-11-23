@@ -48,6 +48,14 @@ have no plays list. Checked equal to `team_weeks` for all 32 teams. Ranks are al
 league ranks (1st = best), also when listing worst first or filtering a conference.
 The Explorer has a Players/Teams switch (`subject=teams` in the URL); the plays panel
 takes `play_subject=team` + `play_team`.
+Game pages (done): `/games/:gameId` (`GET /api/games/{game_id}`, `api/games.py`). Score cards,
+compact rows, the ticker and team schedules all open it (cards are one link, so no TeamLinks
+inside them). Played games get a recap: scoring by quarter, win probability, box score and
+advanced team stats (per-game values from `team_stats.league_values(game_id=...)`), biggest
+win-probability swings, scoring plays and player lines from `player_weeks`; numbers open their
+plays. Unplayed games get a preview: each offense against the other defense by league rank
+(`MATCHUPS`), edge to the better rank, side-by-side ranks, form, past meetings, team leaders and
+injuries; before any final regular-season game it falls back to last season and says so.
 Phase 3 is complete. Next: Phase 2, the MCP connector.
 
 ## Frontend (web/)

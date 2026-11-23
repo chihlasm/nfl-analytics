@@ -4,7 +4,7 @@
  */
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
-import { api, type Explorer, type ExplorerOrder, type ExplorerSort, type Injuries, type Meta, type PlayList, type PlaySort, type SeasonType, type StatCatalog, type TeamExplorer, type News, type PlayerProfile, type PlayerSummary, type Standings, type TeamProfile, type Week } from "./api";
+import { api, type Explorer, type ExplorerOrder, type GameDetail, type ExplorerSort, type Injuries, type Meta, type PlayList, type PlaySort, type SeasonType, type StatCatalog, type TeamExplorer, type News, type PlayerProfile, type PlayerSummary, type Standings, type TeamProfile, type Week } from "./api";
 
 const HOUR = 60 * 60 * 1000;
 
@@ -199,5 +199,16 @@ export function useTeamExplorer(filters: TeamExplorerFilters) {
     queryFn: () => api<TeamExplorer>("/api/explorer/teams", filters),
     staleTime: HOUR,
     placeholderData: keepPreviousData,
+  });
+}
+
+/** One game's page. Refreshes every 30 seconds while the game is on. */
+export function useGame(gameId: string | undefined) {
+  return useQuery({
+    queryKey: ["game", gameId],
+    queryFn: () => api<GameDetail>(`/api/games/${encodeURIComponent(gameId ?? "")}`),
+    enabled: Boolean(gameId),
+    staleTime: (q) => (q.state.data?.game.live?.state === "in" ? LIVE_POLL / 2 : SCORES_STALE),
+    refetchInterval: (q) => (q.state.data?.game.live?.state === "in" ? LIVE_POLL : false),
   });
 }
